@@ -206,6 +206,7 @@ export async function drain(env, id) {
       const form = new FormData();
       form.set("chat_id", id);
       form.set("caption", content.text);
+      form.set("parse_mode", "HTML");
       form.set(
         "document",
         new Blob([content.document], { type: "application/json" }),

@@ -73,6 +73,9 @@ Useful commands:
 chat. To remove older messages use Telegram's Clear History. Commands still
 work while automatic messages are paused.
 
+Existing cloud accounts with the earlier single ৳200 default move to the three
+new limits. To keep only ৳200, send `/alerts low 200` again.
+
 ## Free capacity and current limits
 
 Default maximum: 50 registered users, 2 users checked per minute, 15-minute

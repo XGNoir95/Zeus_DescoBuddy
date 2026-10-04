@@ -192,6 +192,7 @@ test(
       );
       await send(43, "/export");
       assert.equal(calls.at(-1).method, "sendDocument");
+      assert.equal(calls.at(-1).payload.parse_mode, "HTML");
       await send(42, "/disconnect confirm");
       assert.equal(
         (

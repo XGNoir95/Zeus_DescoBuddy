@@ -181,7 +181,7 @@ function notifications(state) {
     receipts = state.cache?.recharges?.data || [],
     b = state.cache?.balance?.data;
   state.alerts ||= { recharge: true, mismatch: true, low: DEFAULT_LOW };
-  // Existing users had a single ৳200 default. Keep explicit custom limits.
+  // Legacy single-৳200 settings are upgraded once to the new defaults.
   if (state.alerts.low === "200" && !state.lowDefaultsMigrated)
     state.alerts.low = DEFAULT_LOW;
   state.lowDefaultsMigrated = true;
