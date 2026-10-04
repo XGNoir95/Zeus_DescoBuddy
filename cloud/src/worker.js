@@ -2,6 +2,7 @@ import * as source from "./desco.js";
 import {
   auditBalance,
   auditReceipt,
+  costLine,
   dailyDeltas,
   dhakaDate,
   historyReport,
@@ -33,6 +34,7 @@ export const COMMANDS = {
   month: "This month’s daily costs",
   recharges: "Latest recharge breakdown",
   history: "Recent recharge history",
+  language: "Choose English or বাংলা",
   usage_history: "Monthly recharge and daily-cost groups",
   audit: "Check receipt amounts",
   schedule: "Choose daily or weekly reports",
@@ -59,9 +61,11 @@ Connect only your own meter:
 /schedule daily 08:00
 /schedule weekly fri 20:00
 /schedule off
-/alerts low 200 (or off)
+/alerts low default — ৳500, ৳300, ৳200
+/alerts low 600 (or off) — one custom limit
 /alerts recharge on (or off)
 /alerts mismatch on (or off)
+/language bn — বাংলা · /language en — English
 /pause · /resume · /settings
 /clear — recent messages (Telegram limits apply)
 /disconnect — remove your meter data
@@ -81,8 +85,29 @@ const MENU = {
       { text: "📜 Recharge history", callback_data: "history" },
       { text: "🔎 Audit", callback_data: "audit" },
     ],
+    [{ text: "বাংলা / English", callback_data: "language" }],
   ],
 };
+const DEFAULT_LOW = ["500", "300", "200"];
+const balanceKey = (b) =>
+  b
+    ? JSON.stringify([b.readingTime, b.balance, b.currentMonthConsumption])
+    : null;
+const completeDays = (state) =>
+  Object.fromEntries(
+    dailyDeltas(state.cache?.daily?.data)
+      .filter(
+        (r) => r.date < dhakaDate() && r.units !== null && r.cost !== null,
+      )
+      .map((r) => [r.date, JSON.stringify([r.units, r.cost])]),
+  );
+function initializeReadingBaseline(state) {
+  if (state.readingSeen) return;
+  state.readingSeen = {
+    balance: balanceKey(state.cache?.balance?.data),
+    days: completeDays(state),
+  };
+}
 export class InputError extends Error {}
 export function privateUser(update) {
   const message = update.callback_query?.message || update.message;
@@ -155,7 +180,11 @@ function notifications(state) {
   const out = [],
     receipts = state.cache?.recharges?.data || [],
     b = state.cache?.balance?.data;
-  state.alerts ||= { recharge: true, mismatch: true, low: "200" };
+  state.alerts ||= { recharge: true, mismatch: true, low: DEFAULT_LOW };
+  // Existing users had a single ৳200 default. Keep explicit custom limits.
+  if (state.alerts.low === "200" && !state.lowDefaultsMigrated)
+    state.alerts.low = DEFAULT_LOW;
+  state.lowDefaultsMigrated = true;
   state.seen ||= {};
   state.pending ||= {};
   if (!state.failures?.includes("recharges") && state.cache?.recharges) {
@@ -198,8 +227,48 @@ function notifications(state) {
   }
   if (state.paused) {
     state.pending = {};
+    initializeReadingBaseline(state);
+    if (!state.failures?.includes("daily"))
+      state.readingSeen.days = {
+        ...state.readingSeen.days,
+        ...completeDays(state),
+      };
+    if (!state.failures?.includes("balance"))
+      state.readingSeen.balance = balanceKey(b);
     return [];
   }
+  initializeReadingBaseline(state);
+  const newReadings = [];
+  if (!state.failures?.includes("daily")) {
+    const current = completeDays(state);
+    for (const [date, fingerprint] of Object.entries(current))
+      if (state.readingSeen.days[date] !== fingerprint) {
+        const row = dailyDeltas(state.cache.daily.data).find(
+          (r) => r.date === date,
+        );
+        newReadings.push(
+          `${state.readingSeen.days[date] ? "Updated" : "Day"} ${date}: ${costLine(row)}`,
+        );
+      }
+    state.readingSeen.days = Object.fromEntries(
+      Object.entries({ ...state.readingSeen.days, ...current }).filter(
+        ([date]) => date >= shift(dhakaDate(), -45),
+      ),
+    );
+  }
+  if (!state.failures?.includes("balance") && b) {
+    const fingerprint = balanceKey(b);
+    if (state.readingSeen.balance && state.readingSeen.balance !== fingerprint)
+      newReadings.push(
+        `Balance: ${money(b.balance)}\nMeter reading: ${b.readingTime || "Pending"} Dhaka`,
+      );
+    state.readingSeen.balance = fingerprint;
+  }
+  if (newReadings.length)
+    out.push({
+      event: `reading:${JSON.stringify(state.readingSeen)}`,
+      text: `📥 New DESCO reading\n${newReadings.join("\n")}`,
+    });
   if (!state.failures?.includes("balance")) {
     for (const [id, r] of Object.entries(state.pending))
       if (instant(b?.readingTime) >= instant(r.rechargeDate)) {
@@ -210,19 +279,38 @@ function notifications(state) {
           });
         delete state.pending[id];
       }
-    const threshold = num(state.alerts.low),
-      value = num(b?.balance);
-    if (
-      threshold !== null &&
-      value !== null &&
-      value.lte(threshold) &&
-      (!state.lastLow || Date.now() - state.lastLow > 86400000)
-    ) {
+    const thresholds = (
+      Array.isArray(state.alerts.low)
+        ? state.alerts.low
+        : state.alerts.low == null
+          ? []
+          : [state.alerts.low]
+    )
+      .map(num)
+      .filter((v) => v !== null)
+      .sort((a, b) => b.cmp(a));
+    const value = num(b?.balance);
+    state.lowNotified ||= {};
+    if (value !== null) {
+      for (const threshold of thresholds)
+        if (value.gte(threshold))
+          delete state.lowNotified[threshold.toString()];
+    }
+    const crossed =
+      value === null
+        ? []
+        : thresholds.filter(
+            (threshold) =>
+              value.lt(threshold) && !state.lowNotified[threshold.toString()],
+          );
+    if (crossed.length) {
+      for (const threshold of crossed)
+        state.lowNotified[threshold.toString()] = true;
+      const threshold = crossed.at(-1);
       out.push({
-        event: `low:${dhakaDate()}`,
-        text: `⚠️ Low balance: ${money(value)}\nDESCO reading: ${b.readingTime || "Pending"}`,
+        event: `low:${threshold}:${balanceKey(b)}`,
+        text: `⚠️ Balance below ${money(threshold)}\nBalance: ${money(value)}\nMeter reading: ${b.readingTime || "Pending"} Dhaka`,
       });
-      state.lastLow = Date.now();
     }
   }
   if (state.schedule) {
@@ -339,6 +427,21 @@ async function command(env, id, state, update) {
   const text = update.callback_query?.data || message.text || "";
   const [raw, ...args] = text.trim().split(/\s+/),
     name = raw?.replace(/^\//, "").split("@")[0].toLowerCase();
+  if (name === "start" && ["bn", "en"].includes(args[0]))
+    state.language = args[0];
+  if (name === "language") {
+    if (!args.length)
+      return {
+        text: "Choose /language bn for বাংলা or /language en for English.",
+      };
+    if (!["bn", "en"].includes(args[0]) || args.length !== 1)
+      throw new InputError("Use /language bn or /language en.");
+    state.language = args[0];
+    return {
+      text:
+        args[0] === "bn" ? "ভাষা বাংলা করা হয়েছে।" : "Language set to English.",
+    };
+  }
   if (name === "start" || name === "help" || !COMMANDS[name])
     return { text: HELP, markup: MENU };
   if (name === "clear")
@@ -359,6 +462,7 @@ async function command(env, id, state, update) {
       throw new InputError("Use /disconnect before switching meters.");
     state.profile = await source.discover(args[0], args[1]);
     await refresh(state, { force: true });
+    initializeReadingBaseline(state);
     if (!state.seenInitialized) {
       state.seen = {};
       for (const r of state.cache?.recharges?.data || [])
@@ -396,7 +500,7 @@ async function command(env, id, state, update) {
   }
   if (name === "settings")
     return {
-      text: `Account: ••••${state.profile.account.slice(-4)}\nTimezone: Asia/Dhaka\nSchedule: ${state.schedule ? `${state.schedule.mode} ${state.schedule.time}` : "off"}\nAutomatic messages: ${state.paused ? "paused" : "on"}\nBackground checks: approximately ${Number(env.POLL_SECONDS || 900) / 60} minutes; may take longer at free-plan capacity.\nRecharge alerts: ${state.alerts?.recharge ? "on" : "off"}\nLow balance: ${money(state.alerts?.low)}`,
+      text: `⚙️ Settings\nAccount: ••••${state.profile.account.slice(-4)}\nLanguage: ${state.language === "bn" ? "বাংলা" : "English"}\nTimezone: Asia/Dhaka\nSchedule: ${state.schedule ? `${state.schedule.mode} ${state.schedule.time}` : "off"}\nAutomatic messages: ${state.paused ? "paused" : "on"}\nBackground checks: approximately ${Number(env.POLL_SECONDS || 900) / 60} minutes; may take longer at free-plan capacity.\nRecharge alerts: ${state.alerts?.recharge ? "on" : "off"}\nLow balance alerts: ${state.alerts?.low == null ? "off" : (Array.isArray(state.alerts?.low) ? state.alerts.low : [state.alerts.low]).map(money).join(", ")}`,
     };
   if (name === "schedule") {
     if (args[0] === "off") {
@@ -428,18 +532,28 @@ async function command(env, id, state, update) {
     };
   }
   if (name === "alerts") {
-    state.alerts ||= { recharge: true, mismatch: true, low: "200" };
+    state.alerts ||= { recharge: true, mismatch: true, low: DEFAULT_LOW };
     const [type, value] = args;
-    if (type === "low" && (value === "off" || num(value)?.gte(0)))
-      state.alerts.low = value === "off" ? null : num(value).toString();
-    else if (
+    if (
+      type === "low" &&
+      (value === "off" || value === "default" || num(value)?.gte(0))
+    ) {
+      state.alerts.low =
+        value === "off"
+          ? null
+          : value === "default"
+            ? DEFAULT_LOW
+            : [num(value).toString()];
+      state.lowDefaultsMigrated = true;
+      state.lowNotified = {};
+    } else if (
       ["recharge", "mismatch"].includes(type) &&
       ["on", "off"].includes(value)
     )
       state.alerts[type] = value === "on";
     else
       throw new InputError(
-        "Use /alerts low 200, /alerts low off, /alerts recharge on, or /alerts mismatch on.",
+        "Use /alerts low default, /alerts low 600, /alerts low off, /alerts recharge on, or /alerts mismatch on.",
       );
     return { text: "Alert setting saved." };
   }
@@ -636,6 +750,7 @@ export default {
       try {
         const messages = [];
         if (locked.state.profile && locked.due <= now) {
+          initializeReadingBaseline(locked.state);
           await refresh(locked.state);
           messages.push(...notifications(locked.state));
         }

@@ -1,3 +1,5 @@
+import { localizeMarkup, renderMessage } from "./i18n.js";
+
 const enc = new TextEncoder(),
   dec = new TextDecoder();
 const to64 = (bytes) =>
@@ -45,7 +47,8 @@ export async function ensureUser(env, id) {
   const payload = await seal(env, id, {
     cache: {},
     seen: {},
-    alerts: { recharge: true, mismatch: true, low: "200" },
+    alerts: { recharge: true, mismatch: true, low: ["500", "300", "200"] },
+    language: "en",
     paused: false,
   });
   const result = await env.DB.prepare(
@@ -128,7 +131,7 @@ export async function commit(env, locked, messages, updateId = null) {
     const eventKey = Array.from(new Uint8Array(digest), (b) =>
       b.toString(16).padStart(2, "0"),
     ).join("");
-    const parts = chunks(message.text);
+    const parts = chunks(renderMessage(message.text, locked.state.language));
     for (let i = 0; i < parts.length; i++)
       statements.push(
         env.DB.prepare(
@@ -138,7 +141,7 @@ export async function commit(env, locked, messages, updateId = null) {
           `${eventKey}:${i}`,
           await seal(env, id, {
             text: parts[i],
-            markup: message.markup,
+            markup: localizeMarkup(message.markup, locked.state.language),
             document: i === 0 ? message.document : undefined,
           }),
           now,
@@ -228,6 +231,7 @@ export async function drain(env, id) {
       message = await telegram(env, "sendMessage", {
         chat_id: id,
         text: content.text,
+        parse_mode: "HTML",
         reply_markup: content.markup,
       });
     await track(env, id, message);

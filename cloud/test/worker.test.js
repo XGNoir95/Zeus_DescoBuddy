@@ -17,6 +17,9 @@ test(
         TELEGRAM_BOT_TOKEN: "123456:TEST_TOKEN_NOT_REAL",
       };
     let telegramId = 100;
+    let secondBalance = "202.00";
+    let secondReadingTime = dhakaDate() + " 00:00:00";
+    let addedDailyCost = 0;
     const mf = new Miniflare(
       convertV4MiniflareOptions({
         modules: true,
@@ -74,8 +77,11 @@ test(
             data = {
               accountNo: account,
               meterNo: meter,
-              balance: account === "123456" ? "101.00" : "202.00",
-              readingTime: dhakaDate() + " 00:00:00",
+              balance: account === "123456" ? "101.00" : secondBalance,
+              readingTime:
+                account === "123456"
+                  ? dhakaDate() + " 00:00:00"
+                  : secondReadingTime,
               currentMonthConsumption: "600",
             };
           else if (url.pathname.endsWith("getRechargeHistory")) data = [];
@@ -90,7 +96,11 @@ test(
                 date: d,
                 meterNo: meter,
                 consumedUnit: Date.parse(d) / 8640000,
-                consumedTaka: Number(d.slice(-2)) * 60,
+                consumedTaka:
+                  Number(d.slice(-2)) * 60 +
+                  (account === "654321" && d === shift(dhakaDate(), -1)
+                    ? addedDailyCost
+                    : 0),
               });
           }
           return Response.json({ code: 200, data });
@@ -241,7 +251,7 @@ test(
         calls.filter(
           (c) =>
             c.method === "sendMessage" &&
-            c.payload.text?.startsWith("📊 Usage:"),
+            c.payload.text?.startsWith("<b>📊 Usage:"),
         ).length;
       const reportsBefore = reportCount();
       await scheduled.scheduled({
@@ -249,6 +259,96 @@ test(
         scheduledTime: Date.now(),
       });
       assert.equal(reportCount(), reportsBefore + 1);
+      secondBalance = "180.00";
+      secondReadingTime = dhakaDate() + " 08:00:00";
+      addedDailyCost = 5;
+      const changed = await unseal(
+        secrets,
+        "43",
+        (
+          await db
+            .prepare("SELECT payload FROM users WHERE id=?")
+            .bind("43")
+            .first()
+        ).payload,
+      );
+      changed.lastRefresh = 0;
+      await db
+        .prepare("UPDATE users SET payload=? WHERE id=?")
+        .bind(await seal(secrets, "43", changed), "43")
+        .run();
+      await db.prepare("UPDATE users SET due=0 WHERE id=?").bind("43").run();
+      await scheduled.scheduled({
+        cron: "* * * * *",
+        scheduledTime: Date.now(),
+      });
+      const sent = calls.filter(
+        (c) => c.method === "sendMessage" && String(c.payload.chat_id) === "43",
+      );
+      assert.ok(
+        sent.some(
+          (c) =>
+            c.payload.text.includes("<b>📥 New DESCO reading</b>") &&
+            c.payload.text.includes("Meter reading:"),
+        ),
+      );
+      assert.ok(
+        sent.some((c) =>
+          c.payload.text.includes(`Updated ${shift(dhakaDate(), -1)}`),
+        ),
+      );
+      assert.ok(sent.some((c) => c.payload.text.includes("below ৳200.00")));
+      assert.ok(sent.every((c) => c.payload.parse_mode === "HTML"));
+      const readingCount = sent.filter((c) =>
+        c.payload.text.includes("📥 New DESCO reading"),
+      ).length;
+      await db.prepare("UPDATE users SET due=0 WHERE id=?").bind("43").run();
+      await scheduled.scheduled({
+        cron: "* * * * *",
+        scheduledTime: Date.now(),
+      });
+      assert.equal(
+        calls.filter(
+          (c) =>
+            c.method === "sendMessage" &&
+            c.payload.text?.includes("📥 New DESCO reading"),
+        ).length,
+        readingCount,
+      );
+      for (const [balance, hour] of [
+        ["600.00", "09"],
+        ["450.00", "10"],
+        ["280.00", "11"],
+      ]) {
+        secondBalance = balance;
+        secondReadingTime = dhakaDate() + ` ${hour}:00:00`;
+        const current = await unseal(
+          secrets,
+          "43",
+          (
+            await db
+              .prepare("SELECT payload FROM users WHERE id=?")
+              .bind("43")
+              .first()
+          ).payload,
+        );
+        current.lastRefresh = 0;
+        await db
+          .prepare("UPDATE users SET payload=?,due=0 WHERE id=?")
+          .bind(await seal(secrets, "43", current), "43")
+          .run();
+        await scheduled.scheduled({
+          cron: "* * * * *",
+          scheduledTime: Date.now(),
+        });
+      }
+      assert.ok(calls.some((c) => c.payload.text?.includes("below ৳500.00")));
+      assert.ok(calls.some((c) => c.payload.text?.includes("below ৳300.00")));
+      await send(43, "/language bn");
+      await send(43, "/status");
+      assert.ok(calls.at(-1).payload.text.includes("ডেসকো হিসাব"));
+      await send(43, "/help");
+      assert.ok(calls.at(-1).payload.text.includes("বাংলা"));
       assert.equal(String(calls.at(-1).payload.chat_id), "43");
       await db.prepare("UPDATE users SET due=0 WHERE id=?").bind("43").run();
       await scheduled.scheduled({

@@ -1,9 +1,47 @@
-# DescoBuddy
+# Zeus DescoBuddy
 
-For public cloud hosting without keeping a PC on, see [cloud/README.md](cloud/README.md).
-The cloud edition uses Cloudflare Workers + D1 with separate data per Telegram
-user and GitHub Actions deployment. The Python instructions below describe the
-original private local/server edition.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/zeus-logo-horizontal-dark.png">
+  <img alt="Zeus logo" src="assets/zeus-logo-horizontal-light.png" width="420">
+</picture>
+
+DESCO prepaid meter updates in Telegram, hosted continuously on Cloudflare's
+free tier. Each user connects their own account and meter. Open
+[@Zeus1810_bot](https://t.me/Zeus1810_bot) to use the public bot; no PC setup is
+needed.
+
+## Start in Telegram
+
+1. Open [@Zeus1810_bot](https://t.me/Zeus1810_bot) and tap **Start**.
+2. Find your DESCO **account number** and **meter number** on the portal or
+   recharge receipt. In the bot's private chat, send
+   `/connect ACCOUNT_NUMBER METER_NUMBER` with your own numbers.
+3. Send `/status` for the latest balance and reading time. `/today` shows the
+   latest available daily cost if DESCO has not published today's record.
+4. Send `/language bn` for Bangla messages, or `/language en` for English.
+
+The bot checks connected meters in the background, aiming for about every 15
+minutes per user. It sends a short notice when DESCO publishes a new balance or
+complete daily reading, with the actual DESCO reading time or usage date. A
+recharge notice follows when DESCO publishes a new receipt. It also alerts when
+the reported balance first falls below **৳500, ৳300, and ৳200**. Use
+`/alerts low default` to restore these limits, `/alerts low 600` for one custom
+limit, or `/alerts low off` to disable them. `/pause` stops automatic messages;
+`/resume` starts them again.
+
+Use `/schedule daily 08:00` or `/schedule weekly fri 20:00` for a regular
+summary (Bangladesh time). `/recharges` shows the latest recharge; `/history`
+shows recent recharges; `/usage_history` groups this month's recharge credits
+and daily costs. `/audit` checks receipt arithmetic, and `/help` lists all
+commands. DESCO's online balance can lag the physical meter, so the bot always
+shows the source reading time. Only connect a meter you own or are authorized
+to manage.
+
+The [cloud guide](cloud/README.md) covers hosting, development, and backups.
+The Python instructions below describe the original private local edition,
+which is separate from the public cloud bot.
+
+## Original private Python edition
 
 A private Telegram bot for DESCO prepaid balance, dated consumption, recharge breakdowns and accounting checks. Only the configured Telegram owner can use it, and only in a private chat.
 

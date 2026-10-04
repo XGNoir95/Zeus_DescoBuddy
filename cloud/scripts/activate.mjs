@@ -42,6 +42,35 @@ await tg("setMyCommands", {
     description,
   })),
 });
+await tg("setMyCommands", {
+  language_code: "bn",
+  commands: Object.entries(COMMANDS).map(([command]) => ({
+    command,
+    description:
+      {
+        start: "শুরু করুন",
+        connect: "নিজের মিটার যুক্ত করুন",
+        status: "ব্যালেন্স ও সর্বশেষ খরচ",
+        today: "আজকের বা সর্বশেষ খরচ",
+        week: "সপ্তাহের ব্যবহার",
+        month: "মাসের ব্যবহার",
+        recharges: "সর্বশেষ রিচার্জ",
+        history: "রিচার্জের ইতিহাস",
+        usage_history: "রিচার্জ ও খরচের ইতিহাস",
+        audit: "হিসাব যাচাই",
+        schedule: "রিপোর্টের সময় ঠিক করুন",
+        alerts: "সতর্কতা ঠিক করুন",
+        language: "বাংলা বা ইংরেজি বেছে নিন",
+        settings: "সেটিংস দেখুন",
+        pause: "স্বয়ংক্রিয় বার্তা বন্ধ",
+        resume: "স্বয়ংক্রিয় বার্তা চালু",
+        disconnect: "মিটারের তথ্য মুছুন",
+        clear: "সাম্প্রতিক বার্তা মুছুন",
+        export: "তথ্য ডাউনলোড",
+        help: "সাহায্য দেখুন",
+      }[command] || "সাহায্য",
+  })),
+});
 await tg("setWebhook", {
   url: new URL("/telegram", url).href,
   secret_token: secrets.WEBHOOK_SECRET,

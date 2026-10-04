@@ -17,7 +17,11 @@ in the parent folder remains a separate private/local edition.
 - Decimal cost calculations. Average price/kWh is not an independently verified
   tariff. Missing readings stay pending; cached readings are labelled.
 - Recharge/low-balance/receipt-mismatch notifications, later balance updates,
-  daily/weekly reports and follow-ups when previously missing readings arrive.
+  newly published reading notices, daily/weekly reports and follow-ups when
+  previously missing readings arrive.
+- English and Bangla Telegram messages via `/language en` and `/language bn`,
+  with bold headings and labels. New users receive alerts at ৳500, ৳300 and
+  ৳200 as DESCO's reported balance crosses those amounts.
 - `/clear` attempts recent messages (at most 1,000 IDs, with a bounded fallback).
   Telegram cannot delete the whole old chat through the Bot API.
 
@@ -25,6 +29,49 @@ Public onboarding requires `/connect ACCOUNT_NUMBER METER_NUMBER`. This checks
 that DESCO returns the matching pair, not independent legal ownership. Only
 connect a meter you own or are authorized to manage. No user's meter is the
 default for another user, including the original operator's account.
+
+## Use the Telegram bot
+
+Open [@Zeus1810_bot](https://t.me/Zeus1810_bot), tap Start, then send:
+
+```text
+/connect YOUR_ACCOUNT_NUMBER YOUR_METER_NUMBER
+/status
+/language bn
+```
+
+Both numbers appear in DESCO's customer information or on a recharge receipt.
+The first number is the account number; the second is the meter serial. Every
+Telegram user connects their own pair. `/status` fetches DESCO's latest online
+balance and prints its reading time; it may not be the physical meter's instant
+balance. `/today` falls back to the latest available complete day.
+
+The bot monitors for new DESCO balance/daily records and new recharge receipts
+throughout the day. The message names the date or timestamp of the newly
+published record; it does not claim that the reading happened when the message
+arrived. Background checks target 15 minutes but can be slower at capacity.
+
+Useful commands:
+
+| Command | Result |
+|---|---|
+| `/status`, `/today`, `/week`, `/month` | Balance and dated usage costs |
+| `/recharges`, `/history` | Latest recharge or recent recharge history |
+| `/usage_history [YYYY-MM]` | Recharges, deductions, and daily costs for a month |
+| `/audit` | Receipt arithmetic and cautious balance comparison |
+| `/schedule daily 08:00` | Daily report at the chosen Dhaka time |
+| `/schedule weekly fri 20:00` | Weekly report on Friday |
+| `/schedule off` | Stop timed reports; change alerts separately |
+| `/alerts low default` | Restore ৳500, ৳300, ৳200 thresholds |
+| `/alerts low 600`, `/alerts low off` | Set one custom threshold or stop low-balance alerts |
+| `/alerts recharge on/off`, `/alerts mismatch on/off` | Change receipt alerts |
+| `/language bn`, `/language en` | Choose Bangla or English messages |
+| `/pause`, `/resume` | Stop or resume automatic messages |
+| `/settings`, `/export`, `/clear`, `/disconnect confirm` | Settings, data copy, recent chat clearing, data removal |
+
+`/clear` can remove only recent messages allowed by Telegram, not an entire old
+chat. To remove older messages use Telegram's Clear History. Commands still
+work while automatic messages are paused.
 
 ## Free capacity and current limits
 
