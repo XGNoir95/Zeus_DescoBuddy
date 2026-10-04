@@ -1,0 +1,25 @@
+name: Bot checks
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: python -m pip install -r requirements.lock
+      - run: python -m pip install --no-deps -e .
+      - run: python -m pip install pytest==9.1.1 pytest-asyncio==1.4.0 ruff==0.16.10
+      - run: python -m ruff check descobuddy tests tools
+      - run: python -m pytest -q
+      - run: docker build --tag descobuddy-check .
+      - name: Check packaged certificate and non-root runtime
+        run: docker run --rm descobuddy-check python -c "import os; from descobuddy.network import tls_context; assert os.getuid() != 0; assert tls_context(desco=True).check_hostname"

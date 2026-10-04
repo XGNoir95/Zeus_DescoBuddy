@@ -1,0 +1,17 @@
+.env
+.env.*
+.venv
+.venv-win
+data
+.git
+tests
+*.log
+__pycache__
+.pytest_cache
+.ruff_cache
+*.egg-info
+.dev.vars
+.dev.vars.*
+.wrangler
+node_modules
+.cloud-secrets.json

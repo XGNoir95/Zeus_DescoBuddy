@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "zeus-descobuddy",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-10-04",
+  "workers_dev": true,
+  "observability": { "enabled": false },
+  "triggers": { "crons": ["* * * * *"] },
+  "vars": { "POLL_SECONDS": "900", "MAX_USERS": "50", "CRON_BATCH": "2" },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "zeus-descobuddy",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations",
+    },
+  ],
+}
