@@ -2,6 +2,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
+import { parse } from "jsonc-parser";
 const root = new URL("../", import.meta.url);
 function wrangler(args, input) {
   const result = spawnSync(
@@ -30,7 +31,7 @@ const auth = wrangler(["whoami"]);
 if (auth.includes("not authenticated"))
   throw new Error("Run npx wrangler login first.");
 const path = new URL("../wrangler.jsonc", import.meta.url),
-  config = JSON.parse(await readFile(path, "utf8"));
+  config = parse(await readFile(path, "utf8"));
 if (
   config.d1_databases[0].database_id === "00000000-0000-0000-0000-000000000000"
 ) {
