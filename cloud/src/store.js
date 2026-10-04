@@ -47,7 +47,7 @@ export async function ensureUser(env, id) {
   const payload = await seal(env, id, {
     cache: {},
     seen: {},
-    alerts: { recharge: true, mismatch: true, low: ["500", "300", "200"] },
+    alerts: { mismatch: false, customLow: null },
     language: "en",
     paused: false,
   });
@@ -141,6 +141,7 @@ export async function commit(env, locked, messages, updateId = null) {
           `${eventKey}:${i}`,
           await seal(env, id, {
             text: parts[i],
+            sourceEvent: message.event,
             markup: localizeMarkup(message.markup, locked.state.language),
             document: i === 0 ? message.document : undefined,
           }),
@@ -168,6 +169,38 @@ export async function track(env, id, message) {
   )
     .bind(id, message.message_id, message.date * 1000)
     .run();
+}
+export async function dropQueuedExtras(
+  env,
+  id,
+  { schedule = false, mismatch = false, customLow = null } = {},
+) {
+  const { results } = await env.DB.prepare(
+    "SELECT event,payload FROM outbox WHERE user_id=?",
+  )
+    .bind(id)
+    .all();
+  for (const row of results) {
+    const content = await unseal(env, id, row.payload);
+    const event = content.sourceEvent || "";
+    const old = content.text || "";
+    const remove =
+      (schedule &&
+        (event.startsWith("schedule:") ||
+          /^<b>(📊 Usage:|📊 বিদ্যুৎ ব্যবহার:|🔄 Missing readings arrived|🔄 অপেক্ষার রিডিং এসেছে)/.test(
+            old,
+          ))) ||
+      (mismatch &&
+        (event.startsWith("audit:") ||
+          /^<b>⚠️ Recharge .*receipt difference/.test(old))) ||
+      (customLow !== null &&
+        (event.startsWith(`extra-low:${customLow}:`) ||
+          old.includes(`below ৳${Number(customLow).toFixed(2)}`)));
+    if (remove)
+      await env.DB.prepare("DELETE FROM outbox WHERE user_id=? AND event=?")
+        .bind(id, row.event)
+        .run();
+  }
 }
 export async function telegram(env, method, payload) {
   let response;

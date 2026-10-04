@@ -48,6 +48,13 @@ const bn = [
   ["Background checks:", "নিয়মিত পরীক্ষা:"],
   ["Recharge alerts:", "রিচার্জ সতর্কতা:"],
   ["Low balance alerts:", "কম ব্যালেন্সের সতর্কতা:"],
+  ["Default alerts:", "নিয়মিত সতর্কতা:"],
+  ["Extra balance alert:", "অতিরিক্ত ব্যালেন্স সতর্কতা:"],
+  ["Receipt mismatch alert:", "রসিদের অমিলের সতর্কতা:"],
+  [
+    "readings, recharges, below ৳500/৳300/৳200",
+    "নতুন রিডিং, রিচার্জ, ৳৫০০/৳৩০০/৳২০০-এর নিচে ব্যালেন্স",
+  ],
   ["approximately", "প্রায়"],
   [
     "minutes; may take longer at free-plan capacity.",
@@ -153,6 +160,47 @@ const bn = [
   ["Automatic messages resumed.", "স্বয়ংক্রিয় বার্তা চালু হয়েছে।"],
   ["Scheduled reports off.", "নিয়মিত রিপোর্ট বন্ধ হয়েছে।"],
   ["Alert setting saved.", "সতর্কতার সেটিং সংরক্ষিত।"],
+  [
+    "Your extra reports and alerts are off. New readings, recharges and the ৳500/৳300/৳200 balance alerts continue.",
+    "আপনার বাড়তি রিপোর্ট ও সতর্কতা বন্ধ। নতুন রিডিং, রিচার্জ এবং ৳৫০০/৳৩০০/৳২০০ ব্যালেন্স সতর্কতা চালু থাকবে।",
+  ],
+  [
+    "Extra reports and alerts are off. All automatic messages are paused; send /resume for the default notices.",
+    "বাড়তি রিপোর্ট ও সতর্কতা বন্ধ। সব স্বয়ংক্রিয় বার্তা বিরত আছে; নিয়মিত খবর পেতে /resume দিন।",
+  ],
+  [
+    "Extra balance alert removed. Default ৳500/৳300/৳200 alerts stay enabled.",
+    "বাড়তি ব্যালেন্স সতর্কতা সরানো হয়েছে। ৳৫০০/৳৩০০/৳২০০-এর নিয়মিত সতর্কতা চালু আছে।",
+  ],
+  [
+    "Default ৳500/৳300/৳200 alerts continue.",
+    "৳৫০০/৳৩০০/৳২০০-এর নিয়মিত সতর্কতা চালু থাকবে।",
+  ],
+  ["Extra balance alert set at", "বাড়তি ব্যালেন্স সতর্কতার সীমা"],
+  ["Extra receipt mismatch alert on.", "রসিদের অমিলের বাড়তি সতর্কতা চালু।"],
+  [
+    "Extra receipt mismatch alert off. Default updates continue.",
+    "রসিদের অমিলের বাড়তি সতর্কতা বন্ধ। নিয়মিত খবর চালু থাকবে।",
+  ],
+  [
+    "Recharge notices are part of default updates and stay on. /pause stops all automatic messages.",
+    "রিচার্জের খবর নিয়মিত আপডেটের অংশ, তাই চালু থাকবে। /pause দিলে সব স্বয়ংক্রিয় বার্তা বন্ধ হয়।",
+  ],
+  [
+    "Default alerts: new readings, recharges, and below ৳500/৳300/৳200. Use /alerts low 600 for an extra balance alert or /alerts mismatch on for receipt checks.",
+    "নিয়মিত সতর্কতা: নতুন রিডিং, রিচার্জ, ৳৫০০/৳৩০০/৳২০০-এর নিচে ব্যালেন্স। বাড়তি সীমার জন্য /alerts low 600 বা রসিদ যাচাইয়ের জন্য /alerts mismatch on দিন।",
+  ],
+  ["Extra settings: schedule", "বাড়তি সেটিংস: সময়সূচি"],
+  ["balance", "ব্যালেন্স"],
+  ["receipt mismatch", "রসিদের অমিল"],
+  [
+    "Use /extras off to remove them; default updates continue.",
+    "এগুলো বন্ধ করতে /extras off দিন; নিয়মিত খবর চালু থাকবে।",
+  ],
+  [
+    "Use /alerts low 600, /alerts low off, /alerts mismatch on, or /alerts mismatch off. Default notices stay on.",
+    "বাড়তি সতর্কতার জন্য /alerts low 600, /alerts low off, /alerts mismatch on বা /alerts mismatch off দিন। নিয়মিত খবর চালু থাকবে।",
+  ],
   ["Reports set:", "রিপোর্টের সময়:"],
   [
     "Bangladesh time. Delivery can be delayed by free hosting or DESCO.",
@@ -260,6 +308,7 @@ const bn = [
   ["Used", "ব্যবহৃত"],
   ["Successful", "সফল"],
 ];
+const bnLongestFirst = [...bn].sort((a, b) => b[0].length - a[0].length);
 
 const helpBn = `⚡ জিউস ডেসকোবাডি
 শুধু নিজের বা অনুমতিপ্রাপ্ত মিটার যুক্ত করুন:
@@ -278,11 +327,10 @@ const helpBn = `⚡ জিউস ডেসকোবাডি
 /schedule daily 08:00 — দৈনিক খবর
 /schedule weekly fri 20:00 — সাপ্তাহিক খবর
 /schedule off — নিয়মিত খবর বন্ধ
-/alerts low default — ৳৫০০, ৳৩০০, ৳২০০
-/alerts low 600 — নিজের সীমা
-/alerts low off — কম ব্যালেন্স সতর্কতা বন্ধ
-/alerts recharge on — রিচার্জের খবর
+/alerts low 600 — বাড়তি ব্যালেন্স সীমা
+/alerts low off — বাড়তি সীমা সরান
 /alerts mismatch on — রসিদের অমিল
+/extras off — বাড়তি রিপোর্ট ও সতর্কতা বন্ধ
 /language en — English
 /pause · /resume · /settings
 /clear — সাম্প্রতিক বার্তা মুছুন
@@ -300,7 +348,7 @@ const html = (s) =>
 export function translate(text, language = "en") {
   if (language !== "bn") return text;
   if (text.startsWith("⚡ Zeus DescoBuddy\n")) return helpBn;
-  return bn
+  return bnLongestFirst
     .reduce(
       (value, [english, bangla]) => value.replaceAll(english, bangla),
       text,
@@ -319,6 +367,7 @@ const buttonsBn = new Map([
   ["📒 Usage history", "📒 ব্যবহারের ইতিহাস"],
   ["📜 Recharge history", "📜 রিচার্জের ইতিহাস"],
   ["🔎 Audit", "🔎 হিসাব যাচাই"],
+  ["🔕 Stop extras", "🔕 বাড়তি খবর বন্ধ"],
 ]);
 export function localizeMarkup(markup, language = "en") {
   if (language !== "bn" || !markup?.inline_keyboard) return markup;

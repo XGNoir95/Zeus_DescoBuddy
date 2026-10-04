@@ -18,6 +18,7 @@ import {
 import {
   commit,
   drain,
+  dropQueuedExtras,
   ensureUser,
   lockUser,
   release,
@@ -38,7 +39,8 @@ export const COMMANDS = {
   usage_history: "Monthly recharge and daily-cost groups",
   audit: "Check receipt amounts",
   schedule: "Choose daily or weekly reports",
-  alerts: "Set recharge and low-balance alerts",
+  alerts: "Set optional balance and receipt alerts",
+  extras: "Remove optional reports and alerts",
   settings: "Show your settings",
   pause: "Pause automatic messages",
   resume: "Resume automatic messages",
@@ -61,10 +63,10 @@ Connect only your own meter:
 /schedule daily 08:00
 /schedule weekly fri 20:00
 /schedule off
-/alerts low default — ৳500, ৳300, ৳200
-/alerts low 600 (or off) — one custom limit
-/alerts recharge on (or off)
+/alerts low 600 — extra balance alert
+/alerts low off — remove extra alert
 /alerts mismatch on (or off)
+/extras off — remove your reports and extras
 /language bn — বাংলা · /language en — English
 /pause · /resume · /settings
 /clear — recent messages (Telegram limits apply)
@@ -85,10 +87,31 @@ const MENU = {
       { text: "📜 Recharge history", callback_data: "history" },
       { text: "🔎 Audit", callback_data: "audit" },
     ],
-    [{ text: "বাংলা / English", callback_data: "language" }],
+    [
+      { text: "বাংলা / English", callback_data: "language" },
+      { text: "🔕 Stop extras", callback_data: "extras off" },
+    ],
   ],
 };
 const DEFAULT_LOW = ["500", "300", "200"];
+function alertPrefs(state) {
+  state.alerts ||= {};
+  if (!("customLow" in state.alerts)) {
+    const previous = Array.isArray(state.alerts.low)
+      ? state.alerts.low
+      : [state.alerts.low];
+    state.alerts.customLow =
+      previous
+        .map(num)
+        .filter((n) => n !== null)
+        .map((n) => n.toString())
+        .find((n) => !DEFAULT_LOW.includes(n)) || null;
+    delete state.alerts.low;
+    delete state.alerts.recharge;
+  }
+  state.alerts.mismatch ??= false;
+  return state.alerts;
+}
 const balanceKey = (b) =>
   b
     ? JSON.stringify([b.readingTime, b.balance, b.currentMonthConsumption])
@@ -180,11 +203,7 @@ function notifications(state) {
   const out = [],
     receipts = state.cache?.recharges?.data || [],
     b = state.cache?.balance?.data;
-  state.alerts ||= { recharge: true, mismatch: true, low: DEFAULT_LOW };
-  // Legacy single-৳200 settings are upgraded once to the new defaults.
-  if (state.alerts.low === "200" && !state.lowDefaultsMigrated)
-    state.alerts.low = DEFAULT_LOW;
-  state.lowDefaultsMigrated = true;
+  const prefs = alertPrefs(state);
   state.seen ||= {};
   state.pending ||= {};
   if (!state.failures?.includes("recharges") && state.cache?.recharges) {
@@ -198,20 +217,18 @@ function notifications(state) {
         state.seen[id] !== fingerprint &&
         !state.paused
       ) {
-        if (state.alerts.recharge) {
-          out.push({
-            event: `recharge:${id}:${fingerprint}`,
-            text: receiptReport(r, b, receipts),
-          });
-          if (
-            !instant(b?.readingTime) ||
-            instant(b.readingTime) < instant(r.rechargeDate)
-          )
-            state.pending[id] = r;
-        }
+        out.push({
+          event: `recharge:${id}:${fingerprint}`,
+          text: receiptReport(r, b, receipts),
+        });
+        if (
+          !instant(b?.readingTime) ||
+          instant(b.readingTime) < instant(r.rechargeDate)
+        )
+          state.pending[id] = r;
       }
       if (
-        state.alerts.mismatch &&
+        prefs.mismatch &&
         !state.paused &&
         auditReceipt(r).state === "difference" &&
         state.seen[id] !== fingerprint
@@ -272,23 +289,18 @@ function notifications(state) {
   if (!state.failures?.includes("balance")) {
     for (const [id, r] of Object.entries(state.pending))
       if (instant(b?.readingTime) >= instant(r.rechargeDate)) {
-        if (state.alerts.recharge)
-          out.push({
-            event: `after:${id}`,
-            text: `⚡ Balance reading after recharge\nBalance: ${money(b.balance)}\nReading: ${b.readingTime} Dhaka\nIncludes any usage since payment.`,
-          });
+        out.push({
+          event: `after:${id}`,
+          text: `⚡ Balance reading after recharge\nBalance: ${money(b.balance)}\nReading: ${b.readingTime} Dhaka\nIncludes any usage since payment.`,
+        });
         delete state.pending[id];
       }
-    const thresholds = (
-      Array.isArray(state.alerts.low)
-        ? state.alerts.low
-        : state.alerts.low == null
-          ? []
-          : [state.alerts.low]
-    )
+    const thresholds = [
+      ...DEFAULT_LOW,
+      ...(prefs.customLow ? [prefs.customLow] : []),
+    ]
       .map(num)
-      .filter((v) => v !== null)
-      .sort((a, b) => b.cmp(a));
+      .filter((v) => v !== null);
     const value = num(b?.balance);
     state.lowNotified ||= {};
     if (value !== null) {
@@ -296,19 +308,27 @@ function notifications(state) {
         if (value.gte(threshold))
           delete state.lowNotified[threshold.toString()];
     }
-    const crossed =
-      value === null
-        ? []
-        : thresholds.filter(
-            (threshold) =>
-              value.lt(threshold) && !state.lowNotified[threshold.toString()],
-          );
-    if (crossed.length) {
+    for (const [kind, limits] of [
+      ["low", DEFAULT_LOW],
+      ["extra-low", prefs.customLow ? [prefs.customLow] : []],
+    ]) {
+      const crossed =
+        value === null
+          ? []
+          : limits
+              .map(num)
+              .filter(
+                (threshold) =>
+                  threshold &&
+                  value.lt(threshold) &&
+                  !state.lowNotified[threshold.toString()],
+              );
+      if (!crossed.length) continue;
       for (const threshold of crossed)
         state.lowNotified[threshold.toString()] = true;
       const threshold = crossed.at(-1);
       out.push({
-        event: `low:${threshold}:${balanceKey(b)}`,
+        event: `${kind}:${threshold}:${balanceKey(b)}`,
         text: `⚠️ Balance below ${money(threshold)}\nBalance: ${money(value)}\nMeter reading: ${b.readingTime || "Pending"} Dhaka`,
       });
     }
@@ -500,11 +520,39 @@ async function command(env, id, state, update) {
   }
   if (name === "settings")
     return {
-      text: `⚙️ Settings\nAccount: ••••${state.profile.account.slice(-4)}\nLanguage: ${state.language === "bn" ? "বাংলা" : "English"}\nTimezone: Asia/Dhaka\nSchedule: ${state.schedule ? `${state.schedule.mode} ${state.schedule.time}` : "off"}\nAutomatic messages: ${state.paused ? "paused" : "on"}\nBackground checks: approximately ${Number(env.POLL_SECONDS || 900) / 60} minutes; may take longer at free-plan capacity.\nRecharge alerts: ${state.alerts?.recharge ? "on" : "off"}\nLow balance alerts: ${state.alerts?.low == null ? "off" : (Array.isArray(state.alerts?.low) ? state.alerts.low : [state.alerts.low]).map(money).join(", ")}`,
+      text: `⚙️ Settings\nAccount: ••••${state.profile.account.slice(-4)}\nLanguage: ${state.language === "bn" ? "বাংলা" : "English"}\nTimezone: Asia/Dhaka\nSchedule: ${state.schedule ? `${state.schedule.mode} ${state.schedule.time}` : "off"}\nAutomatic messages: ${state.paused ? "paused" : "on"}\nBackground checks: approximately ${Number(env.POLL_SECONDS || 900) / 60} minutes; may take longer at free-plan capacity.\nDefault alerts: readings, recharges, below ৳500/৳300/৳200\nExtra balance alert: ${alertPrefs(state).customLow ? money(state.alerts.customLow) : "off"}\nReceipt mismatch alert: ${state.alerts.mismatch ? "on" : "off"}`,
     };
+  if (name === "extras") {
+    const prefs = alertPrefs(state);
+    if (args[0] !== "off" || args.length !== 1)
+      return {
+        text: `Extra settings: schedule ${state.schedule ? `${state.schedule.mode} ${state.schedule.time}` : "off"}, balance ${prefs.customLow ? money(prefs.customLow) : "off"}, receipt mismatch ${prefs.mismatch ? "on" : "off"}.\nUse /extras off to remove them; default updates continue.`,
+      };
+    const oldCustom = prefs.customLow;
+    delete state.schedule;
+    delete state.lastSlot;
+    delete state.lastReportComplete;
+    prefs.customLow = null;
+    prefs.mismatch = false;
+    if (oldCustom) delete state.lowNotified?.[oldCustom];
+    await dropQueuedExtras(env, id, {
+      schedule: true,
+      mismatch: true,
+      customLow: oldCustom,
+    });
+    return {
+      text: state.paused
+        ? "Extra reports and alerts are off. All automatic messages are paused; send /resume for the default notices."
+        : "Your extra reports and alerts are off. New readings, recharges and the ৳500/৳300/৳200 balance alerts continue.",
+      markup: MENU,
+    };
+  }
   if (name === "schedule") {
     if (args[0] === "off") {
       delete state.schedule;
+      delete state.lastSlot;
+      delete state.lastReportComplete;
+      await dropQueuedExtras(env, id, { schedule: true });
       return { text: "Scheduled reports off." };
     }
     const mode = args[0],
@@ -532,30 +580,47 @@ async function command(env, id, state, update) {
     };
   }
   if (name === "alerts") {
-    state.alerts ||= { recharge: true, mismatch: true, low: DEFAULT_LOW };
+    const prefs = alertPrefs(state);
     const [type, value] = args;
     if (
       type === "low" &&
       (value === "off" || value === "default" || num(value)?.gte(0))
     ) {
-      state.alerts.low =
-        value === "off"
-          ? null
-          : value === "default"
-            ? DEFAULT_LOW
-            : [num(value).toString()];
-      state.lowDefaultsMigrated = true;
-      state.lowNotified = {};
-    } else if (
-      ["recharge", "mismatch"].includes(type) &&
-      ["on", "off"].includes(value)
-    )
-      state.alerts[type] = value === "on";
+      const oldCustom = prefs.customLow;
+      prefs.customLow =
+        value === "off" || value === "default" ? null : num(value).toString();
+      if (DEFAULT_LOW.includes(prefs.customLow)) prefs.customLow = null;
+      if (oldCustom) delete state.lowNotified?.[oldCustom];
+      if (prefs.customLow) delete state.lowNotified?.[prefs.customLow];
+      if (oldCustom && oldCustom !== prefs.customLow)
+        await dropQueuedExtras(env, id, { customLow: oldCustom });
+      return {
+        text: prefs.customLow
+          ? `Extra balance alert set at ${money(prefs.customLow)}. Default ৳500/৳300/৳200 alerts continue.`
+          : "Extra balance alert removed. Default ৳500/৳300/৳200 alerts stay enabled.",
+      };
+    }
+    if (type === "mismatch" && ["on", "off"].includes(value)) {
+      prefs.mismatch = value === "on";
+      if (!prefs.mismatch) await dropQueuedExtras(env, id, { mismatch: true });
+      return {
+        text: prefs.mismatch
+          ? "Extra receipt mismatch alert on."
+          : "Extra receipt mismatch alert off. Default updates continue.",
+      };
+    }
+    if (type === "recharge" && ["on", "off"].includes(value))
+      return {
+        text: "Recharge notices are part of default updates and stay on. /pause stops all automatic messages.",
+      };
+    if (!type)
+      return {
+        text: "Default alerts: new readings, recharges, and below ৳500/৳300/৳200. Use /alerts low 600 for an extra balance alert or /alerts mismatch on for receipt checks.",
+      };
     else
       throw new InputError(
-        "Use /alerts low default, /alerts low 600, /alerts low off, /alerts recharge on, or /alerts mismatch on.",
+        "Use /alerts low 600, /alerts low off, /alerts mismatch on, or /alerts mismatch off. Default notices stay on.",
       );
-    return { text: "Alert setting saved." };
   }
   if (name === "usage_history") {
     let start, end;

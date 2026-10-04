@@ -260,8 +260,108 @@ test(
         scheduledTime: Date.now(),
       });
       assert.equal(reportCount(), reportsBefore + 1);
+      await send(43, "/language en");
+      await send(43, "/alerts low 600");
+      await send(43, "/alerts mismatch on");
+      await send(43, "/schedule daily 08:00");
+      const configured = await unseal(
+        secrets,
+        "43",
+        (
+          await db
+            .prepare("SELECT payload FROM users WHERE id=?")
+            .bind("43")
+            .first()
+        ).payload,
+      );
+      assert.equal(configured.alerts.customLow, "600");
+      assert.equal(configured.alerts.mismatch, true);
+      assert.equal(configured.schedule.mode, "daily");
+      const sentBeforeExtras = calls.length;
+      for (const [event, sourceEvent, text] of [
+        [
+          "queued-schedule",
+          "schedule:sample",
+          "<b>📊 Usage: queued optional report</b>",
+        ],
+        [
+          "queued-extra",
+          "extra-low:600:sample",
+          "<b>⚠️ Balance below ৳600.00</b>",
+        ],
+        ["queued-core", "reading:sample", "<b>📥 New DESCO reading</b>"],
+      ])
+        await db
+          .prepare(
+            "INSERT INTO outbox(user_id,event,payload,created) VALUES(?,?,?,?)",
+          )
+          .bind(
+            "43",
+            event,
+            await seal(secrets, "43", { text, sourceEvent }),
+            Date.now(),
+          )
+          .run();
+      await send(43, "/extras off");
+      const afterExtras = await unseal(
+        secrets,
+        "43",
+        (
+          await db
+            .prepare("SELECT payload FROM users WHERE id=?")
+            .bind("43")
+            .first()
+        ).payload,
+      );
+      assert.equal(afterExtras.schedule, undefined);
+      assert.equal(afterExtras.alerts.customLow, null);
+      assert.equal(afterExtras.alerts.mismatch, false);
+      const extraReplies = calls
+        .slice(sentBeforeExtras)
+        .map((c) => c.payload.text || "");
+      assert.ok(
+        extraReplies.some((text) => text.includes("New DESCO reading")),
+      );
+      assert.ok(
+        !extraReplies.some((text) => text.includes("queued optional report")),
+      );
+      assert.ok(!extraReplies.some((text) => text.includes("below ৳600.00")));
+      await send(43, "/alerts low 650");
+      await send(43, "/alerts low off");
+      const removedCustom = await unseal(
+        secrets,
+        "43",
+        (
+          await db
+            .prepare("SELECT payload FROM users WHERE id=?")
+            .bind("43")
+            .first()
+        ).payload,
+      );
+      assert.equal(removedCustom.alerts.customLow, null);
+      await send(43, "/alerts recharge off");
+      assert.ok(calls.at(-1).payload.text.includes("stay on"));
       secondBalance = "180.00";
-      secondReadingTime = dhakaDate() + " 08:00:00";
+      secondReadingTime = dhakaDate() + " 12:00:00";
+      removedCustom.lastRefresh = 0;
+      await db
+        .prepare("UPDATE users SET payload=?,due=0 WHERE id=?")
+        .bind(await seal(secrets, "43", removedCustom), "43")
+        .run();
+      const coreBefore = calls.filter((c) =>
+        c.payload.text?.includes("below ৳200.00"),
+      ).length;
+      await scheduled.scheduled({
+        cron: "* * * * *",
+        scheduledTime: Date.now(),
+      });
+      assert.equal(
+        calls.filter((c) => c.payload.text?.includes("below ৳200.00")).length,
+        coreBefore + 1,
+      );
+      assert.equal(reportCount(), reportsBefore + 1);
+      secondBalance = "180.00";
+      secondReadingTime = dhakaDate() + " 13:00:00";
       addedDailyCost = 5;
       const changed = await unseal(
         secrets,
@@ -317,9 +417,9 @@ test(
         readingCount,
       );
       for (const [balance, hour] of [
-        ["600.00", "09"],
-        ["450.00", "10"],
-        ["280.00", "11"],
+        ["600.00", "14"],
+        ["450.00", "15"],
+        ["280.00", "16"],
       ]) {
         secondBalance = balance;
         secondReadingTime = dhakaDate() + ` ${hour}:00:00`;
@@ -357,6 +457,73 @@ test(
         scheduledTime: Date.now(),
       });
       assert.equal(reportCount(), reportsBefore + 1);
+      await send(43, "/language en");
+      await send(43, "/schedule daily 08:00");
+      await send(43, "/schedule off");
+      await send(43, "/alerts low 650");
+      secondBalance = "270.00";
+      secondReadingTime = dhakaDate() + " 17:00:00";
+      let probe = await unseal(
+        secrets,
+        "43",
+        (
+          await db
+            .prepare("SELECT payload FROM users WHERE id=?")
+            .bind("43")
+            .first()
+        ).payload,
+      );
+      assert.equal(probe.schedule, undefined);
+      probe.lastRefresh = 0;
+      await db
+        .prepare("UPDATE users SET payload=?,due=0 WHERE id=?")
+        .bind(await seal(secrets, "43", probe), "43")
+        .run();
+      const extraBefore = calls.filter((c) =>
+        c.payload.text?.includes("below ৳650.00"),
+      ).length;
+      await scheduled.scheduled({
+        cron: "* * * * *",
+        scheduledTime: Date.now(),
+      });
+      assert.equal(
+        calls.filter((c) => c.payload.text?.includes("below ৳650.00")).length,
+        extraBefore + 1,
+      );
+      await send(43, "/alerts low off");
+      secondBalance = "180.00";
+      secondReadingTime = dhakaDate() + " 18:00:00";
+      probe = await unseal(
+        secrets,
+        "43",
+        (
+          await db
+            .prepare("SELECT payload FROM users WHERE id=?")
+            .bind("43")
+            .first()
+        ).payload,
+      );
+      assert.equal(probe.alerts.customLow, null);
+      probe.lastRefresh = 0;
+      await db
+        .prepare("UPDATE users SET payload=?,due=0 WHERE id=?")
+        .bind(await seal(secrets, "43", probe), "43")
+        .run();
+      const core200Before = calls.filter((c) =>
+        c.payload.text?.includes("below ৳200.00"),
+      ).length;
+      await scheduled.scheduled({
+        cron: "* * * * *",
+        scheduledTime: Date.now(),
+      });
+      assert.equal(
+        calls.filter((c) => c.payload.text?.includes("below ৳650.00")).length,
+        extraBefore + 1,
+      );
+      assert.equal(
+        calls.filter((c) => c.payload.text?.includes("below ৳200.00")).length,
+        core200Before + 1,
+      );
     } finally {
       await mf.dispose();
     }

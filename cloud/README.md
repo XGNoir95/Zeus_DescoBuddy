@@ -16,7 +16,7 @@ in the parent folder remains a separate private/local edition.
   usage history, receipt/balance arithmetic, JSON export, alerts and schedules.
 - Decimal cost calculations. Average price/kWh is not an independently verified
   tariff. Missing readings stay pending; cached readings are labelled.
-- Recharge/low-balance/receipt-mismatch notifications, later balance updates,
+- Recharge/low-balance/optional receipt-mismatch notifications, later balance updates,
   newly published reading notices, daily/weekly reports and follow-ups when
   previously missing readings arrive.
 - English and Bangla Telegram messages via `/language en` and `/language bn`,
@@ -61,20 +61,22 @@ Useful commands:
 | `/audit` | Receipt arithmetic and cautious balance comparison |
 | `/schedule daily 08:00` | Daily report at the chosen Dhaka time |
 | `/schedule weekly fri 20:00` | Weekly report on Friday |
-| `/schedule off` | Stop timed reports; change alerts separately |
-| `/alerts low default` | Restore ৳500, ৳300, ৳200 thresholds |
-| `/alerts low 600`, `/alerts low off` | Set one custom threshold or stop low-balance alerts |
-| `/alerts recharge on/off`, `/alerts mismatch on/off` | Change receipt alerts |
+| `/schedule off` | Stop your timed reports; standard notices continue |
+| `/alerts low 600` | Add a personal ৳600 balance alert alongside the standard three |
+| `/alerts low off`, `/alerts low default` | Remove the personal balance alert; standard three continue |
+| `/alerts mismatch on/off` | Add or remove optional receipt arithmetic alerts |
+| `/extras off` | Remove your schedule and all optional alerts together |
 | `/language bn`, `/language en` | Choose Bangla or English messages |
-| `/pause`, `/resume` | Stop or resume automatic messages |
+| `/pause`, `/resume` | Stop or resume every automatic message, including standard notices |
 | `/settings`, `/export`, `/clear`, `/disconnect confirm` | Settings, data copy, recent chat clearing, data removal |
 
 `/clear` can remove only recent messages allowed by Telegram, not an entire old
 chat. To remove older messages use Telegram's Clear History. Commands still
 work while automatic messages are paused.
 
-Existing cloud accounts with the earlier single ৳200 default move to the three
-new limits. To keep only ৳200, send `/alerts low 200` again.
+Existing cloud accounts keep any custom balance threshold alongside the standard
+three. Earlier settings that disabled low-balance or recharge notices no longer
+disable the standard notices. `/extras off` clears only optional settings.
 
 ## Free capacity and current limits
 

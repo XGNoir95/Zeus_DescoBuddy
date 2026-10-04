@@ -21,4 +21,11 @@ test("Telegram hierarchy escapes source values and Bangla keeps commands", () =>
     ),
     /\/connect ACCOUNT_NUMBER METER_NUMBER/,
   );
+  assert.match(
+    renderMessage(
+      "Extra balance alert removed. Default ৳500/৳300/৳200 alerts stay enabled.",
+      "bn",
+    ),
+    /বাড়তি ব্যালেন্স সতর্কতা সরানো হয়েছে/,
+  );
 });

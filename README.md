@@ -25,8 +25,11 @@ minutes per user. It sends a short notice when DESCO publishes a new balance or
 complete daily reading, with the actual DESCO reading time or usage date. A
 recharge notice follows when DESCO publishes a new receipt. It also alerts when
 the reported balance first falls below **৳500, ৳300, and ৳200**. Use
-`/alerts low default` to restore these limits, `/alerts low 600` for one custom
-limit, or `/alerts low off` to disable them. `/pause` stops automatic messages;
+`/alerts low 600` to add a personal alert at ৳600; the standard three limits
+still apply. `/alerts low off` removes only that personal alert. `/schedule off`
+stops your timed reports, and `/extras off` removes all your optional reports
+and alerts together. The standard reading, recharge and three balance notices
+continue. `/pause` is the separate command that stops every automatic message;
 `/resume` starts them again.
 
 Use `/schedule daily 08:00` or `/schedule weekly fri 20:00` for a regular
