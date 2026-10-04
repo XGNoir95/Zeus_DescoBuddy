@@ -10,8 +10,9 @@ in the parent folder remains a separate private/local edition.
 - AES-GCM encrypted profiles/readings/outbox, bound to the user ID. D1 stores
   user/message IDs and scheduling timestamps as metadata; names, addresses,
   phone numbers and recharge tokens are discarded.
-- Webhook-secret validation, update deduplication, per-user processing leases,
-  command throttling and a persistent notification outbox.
+- Webhook-secret validation, bounded request bodies, per-user and onboarding
+  rate limits, update deduplication, per-user leases, command spacing and a
+  persistent notification outbox.
 - Status, today/week/month, last recharge, recharge history, grouped monthly
   usage history, receipt/balance arithmetic, JSON export, alerts and schedules.
 - Decimal cost calculations. Average price/kWh is not an independently verified
@@ -53,22 +54,22 @@ arrived. Background checks target 15 minutes but can be slower at capacity.
 
 Useful commands:
 
-| Command | Result |
-|---|---|
-| `/status`, `/today`, `/week`, `/month` | Balance and dated usage costs |
-| `/recharges`, `/history` | Latest recharge or recent recharge history |
-| `/usage_history [YYYY-MM]` | Recharges, deductions, and daily costs for a month |
-| `/audit` | Receipt arithmetic and cautious balance comparison |
-| `/schedule daily 08:00` | Daily report at the chosen Dhaka time |
-| `/schedule weekly fri 20:00` | Weekly report on Friday |
-| `/schedule off` | Stop your timed reports; standard notices continue |
-| `/alerts low 600` | Add a personal ৳600 balance alert alongside the standard three |
-| `/alerts low off`, `/alerts low default` | Remove the personal balance alert; standard three continue |
-| `/alerts mismatch on/off` | Add or remove optional receipt arithmetic alerts |
-| `/extras off` | Remove your schedule and all optional alerts together |
-| `/language bn`, `/language en` | Choose Bangla or English messages |
-| `/pause`, `/resume` | Stop or resume every automatic message, including standard notices |
-| `/settings`, `/export`, `/clear`, `/disconnect confirm` | Settings, data copy, recent chat clearing, data removal |
+| Command                                                 | Result                                                             |
+| ------------------------------------------------------- | ------------------------------------------------------------------ |
+| `/status`, `/today`, `/week`, `/month`                  | Balance and dated usage costs                                      |
+| `/recharges`, `/history`                                | Latest recharge or recent recharge history                         |
+| `/usage_history [YYYY-MM]`                              | Recharges, deductions, and daily costs for a month                 |
+| `/audit`                                                | Receipt arithmetic and cautious balance comparison                 |
+| `/schedule daily 08:00`                                 | Daily report at the chosen Dhaka time                              |
+| `/schedule weekly fri 20:00`                            | Weekly report on Friday                                            |
+| `/schedule off`                                         | Stop your timed reports; standard notices continue                 |
+| `/alerts low 600`                                       | Add a personal ৳600 balance alert alongside the standard three     |
+| `/alerts low off`, `/alerts low default`                | Remove the personal balance alert; standard three continue         |
+| `/alerts mismatch on/off`                               | Add or remove optional receipt arithmetic alerts                   |
+| `/extras off`                                           | Remove your schedule and all optional alerts together              |
+| `/language bn`, `/language en`                          | Choose Bangla or English messages                                  |
+| `/pause`, `/resume`                                     | Stop or resume every automatic message, including standard notices |
+| `/settings`, `/export`, `/clear`, `/disconnect confirm` | Settings, data copy, recent chat clearing, data removal            |
 
 `/clear` can remove only recent messages allowed by Telegram, not an entire old
 chat. To remove older messages use Telegram's Clear History. Commands still
@@ -84,6 +85,11 @@ Default maximum: 50 registered users, 2 users checked per minute, 15-minute
 target polling interval. At 50 active users, one background round takes about
 25 minutes plus failures/retries; notifications are not instantaneous. Commands
 request current DESCO data, with a 30-second cache and per-user command throttle.
+The Worker accepts up to 12 authenticated updates per user per minute, with a
+separate 3/minute budget for costly commands and 5/minute for new users.
+Excess updates are acknowledged without a bot reply; retry after a minute.
+Unconnected or disconnected profiles are removed after six idle hours to free
+capacity. Rate counters are per Cloudflare location, not exact global quotas.
 Daily reports catch up after their chosen Bangladesh time. Users choose daily
 or weekly delivery. The cloud edition currently uses Asia/Dhaka only.
 
@@ -168,6 +174,11 @@ for private database backups and retain DATA_KEY separately. Never commit
 backups. To roll back code, use Cloudflare deployment rollback or redeploy a
 known good commit. Rollback does not undo D1 migrations; do not drop columns or
 tables while old versions might need them.
+
+See [architecture](../docs/architecture.md) and
+[security and abuse controls](../docs/security.md) for capacity assumptions,
+failure modes and incident steps. These application limits do not guarantee
+protection from network-scale floods against the public `workers.dev` URL.
 
 ## Sources
 

@@ -43,7 +43,9 @@ export async function ensureUser(env, id) {
   const existing = await env.DB.prepare("SELECT id FROM users WHERE id=?")
     .bind(id)
     .first();
-  if (existing) return true;
+  if (existing) return "existing";
+  const admission = await env.ONBOARDING.limit({ key: "new-user" });
+  if (!admission.success) return "limited";
   const payload = await seal(env, id, {
     cache: {},
     seen: {},
@@ -56,10 +58,12 @@ export async function ensureUser(env, id) {
   )
     .bind(id, payload, Number(env.MAX_USERS || 50))
     .run();
-  return (
-    result.meta.changes > 0 ||
-    !!(await env.DB.prepare("SELECT id FROM users WHERE id=?").bind(id).first())
-  );
+  if (result.meta.changes > 0) return "created";
+  return (await env.DB.prepare("SELECT id FROM users WHERE id=?")
+    .bind(id)
+    .first())
+    ? "existing"
+    : "full";
 }
 export async function lockUser(env, id) {
   const lease = crypto.randomUUID(),

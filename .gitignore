@@ -1,24 +1,47 @@
+# Credentials and private data
 .env
 .env.*
 !.env.example
+.dev.vars
+.dev.vars.*
+.cloud-secrets.json
+*.key
+data/
+exports/
+backups/
+private/
+PRIVATE_BACKUP.sql
+*.sql.backup
+*.sql.gz
+*.tfstate
+*.tfstate.*
+
+# Python environments, state and tooling
 .venv/
 .venv-win/
-data/
+venv/
+.tox/
 *.sqlite*
 *.db
-*.key
+*.db-wal
+*.db-shm
 *.log
+*.pyc
 __pycache__/
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+coverage/
 *.egg-info/
 build/
 dist/
-exports/
-.dev.vars
-.dev.vars.*
+
+# Worker/Node state
 .wrangler/
 node_modules/
-.cloud-secrets.json
-*.sql.backup
-PRIVATE_BACKUP.sql
+
+# OS/editor noise
+.DS_Store
+Thumbs.db

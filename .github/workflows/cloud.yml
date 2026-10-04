@@ -23,6 +23,8 @@ jobs:
           cache: npm
           cache-dependency-path: cloud/package-lock.json
       - run: npm ci
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npm exec prettier -- --check src test README.md wrangler.jsonc
       - run: npm run check
       - run: npm test
   deploy:

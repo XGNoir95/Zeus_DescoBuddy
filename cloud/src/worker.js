@@ -1,4 +1,5 @@
 import * as source from "./desco.js";
+import { allowUpdate, BodyTooLarge, readUpdate } from "./guard.js";
 import {
   auditBalance,
   auditReceipt,
@@ -364,7 +365,7 @@ function notifications(state) {
 }
 async function clearChat(env, id, latest) {
   const { results } = await env.DB.prepare(
-    "SELECT id FROM messages WHERE user_id=? AND sent>?",
+    "SELECT id FROM messages WHERE user_id=? AND sent>? ORDER BY id DESC LIMIT 1000",
   )
     .bind(id, Date.now() - 172800000)
     .all();
@@ -389,7 +390,7 @@ async function clearChat(env, id, latest) {
         break;
       }
       for (const mid of ids.slice(i, i + 100)) {
-        if (retries++ >= 30) {
+        if (retries++ >= 10) {
           blocked = true;
           break;
         }
@@ -407,18 +408,14 @@ async function clearChat(env, id, latest) {
       }
       if (blocked) break;
     }
-    await env.DB.batch(
-      ids
-        .slice(i, i + 100)
-        .map((n) =>
-          env.DB.prepare("DELETE FROM messages WHERE user_id=? AND id=?").bind(
-            id,
-            n,
-          ),
-        ),
-    );
+    const batch = ids.slice(i, i + 100);
+    await env.DB.prepare(
+      "DELETE FROM messages WHERE user_id=? AND id BETWEEN ? AND ?",
+    )
+      .bind(id, batch.at(-1), batch[0])
+      .run();
   }
-  return `${blocked ? "Telegram could not delete some messages." : "Finished clearing eligible recent messages."}\nOnly recent messages can be deleted by bots (up to 1,000 IDs per request). Use Telegram Clear History for the entire chat. Your meter data is kept.`;
+  return `${blocked ? "Telegram could not delete some messages." : "Finished clearing eligible recent messages."}\nOnly recent messages can be deleted by bots (up to 1,000 IDs per /clear command). Use Telegram Clear History for the entire chat. Your meter data is kept.`;
 }
 function auditReport(state) {
   const rs = state.cache?.recharges?.data || [],
@@ -730,20 +727,32 @@ export default {
       return new Response("Not found", { status: 404 });
     if (!(await validSecret(request, env)))
       return new Response("Forbidden", { status: 403 });
-    if (Number(request.headers.get("Content-Length") || 0) > 65536)
-      return new Response("Too large", { status: 413 });
-    const raw = await request.text();
-    if (raw.length > 65536) return new Response("Too large", { status: 413 });
+    let raw;
+    try {
+      raw = await readUpdate(request);
+    } catch (e) {
+      if (e instanceof BodyTooLarge)
+        return new Response("Too large", { status: 413 });
+      return new Response("Invalid body", { status: 400 });
+    }
     let update;
     try {
       update = JSON.parse(raw);
     } catch {
       return new Response("Invalid JSON", { status: 400 });
     }
-    if (!Number.isSafeInteger(update.update_id))
+    if (
+      !update ||
+      typeof update !== "object" ||
+      Array.isArray(update) ||
+      !Number.isSafeInteger(update.update_id)
+    )
       return new Response("Invalid update", { status: 400 });
     const id = privateUser(update);
     if (!id) return new Response("OK");
+    // Acknowledge rejected Telegram updates without replying or retrying;
+    // 429 would cause Telegram to resend a flood.
+    if (!(await allowUpdate(env, id, update))) return new Response("OK");
     let locked;
     try {
       if (
@@ -752,7 +761,9 @@ export default {
           .first()
       )
         return new Response("OK");
-      if (!(await ensureUser(env, id))) {
+      const admission = await ensureUser(env, id);
+      if (admission === "limited") return new Response("OK");
+      if (admission === "full") {
         await telegram(env, "sendMessage", {
           chat_id: id,
           text: "This free instance has reached its user capacity. Please try later.",
@@ -803,6 +814,11 @@ export default {
         now - 7 * 86400000,
       ),
       env.DB.prepare("DELETE FROM messages WHERE sent<?").bind(now - 172800000),
+      // New users who never connected, and disconnected users, should not
+      // occupy one of the free instance's limited profile slots forever.
+      env.DB.prepare(
+        "DELETE FROM users WHERE active=0 AND last_command<? AND NOT EXISTS(SELECT 1 FROM outbox WHERE outbox.user_id=users.id)",
+      ).bind(now - 6 * 3600000),
     ]);
     const { results } = await env.DB.prepare(
       "SELECT id FROM users WHERE (active=1 AND due<=?) OR EXISTS(SELECT 1 FROM outbox WHERE outbox.user_id=users.id) ORDER BY due LIMIT ?",

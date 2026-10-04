@@ -1,4 +1,6 @@
-# Deployment preparation
+# Archived deployment preparation (local Python edition)
+
+For the live Cloudflare bot, use `cloud/README.md` from the repository root.
 
 The public Cloudflare implementation and CI/CD workflow are in `cloud/`.
 Follow [cloud/README.md](cloud/README.md) for authentication, deployment,

@@ -35,6 +35,20 @@ test(
           MAX_USERS: "50",
           CRON_BATCH: "2",
         },
+        ratelimits: {
+          USER_UPDATES: {
+            namespace_id: "1001",
+            simple: { limit: 1000, period: 60 },
+          },
+          EXPENSIVE_UPDATES: {
+            namespace_id: "1002",
+            simple: { limit: 1000, period: 60 },
+          },
+          ONBOARDING: {
+            namespace_id: "18101003",
+            simple: { limit: 1000, period: 60 },
+          },
+        },
         outboundService: async (request) => {
           const url = new URL(request.url);
           if (url.hostname === "api.telegram.org") {
@@ -142,6 +156,18 @@ test(
         });
       }
       assert.equal((await send(42, "/start", 900, "wrong")).status, 403);
+      assert.equal(
+        (
+          await mf.dispatchFetch("http://localhost/telegram", {
+            method: "POST",
+            headers: {
+              "X-Telegram-Bot-Api-Secret-Token": secrets.WEBHOOK_SECRET,
+            },
+            body: "null",
+          })
+        ).status,
+        400,
+      );
       assert.equal(
         (await db.prepare("SELECT COUNT(*) AS n FROM users").first()).n,
         0,
@@ -523,6 +549,22 @@ test(
       assert.equal(
         calls.filter((c) => c.payload.text?.includes("below ৳200.00")).length,
         core200Before + 1,
+      );
+      await send(44, "/start");
+      await db
+        .prepare("UPDATE users SET last_command=? WHERE id=?")
+        .bind(Date.now() - 7 * 3600000, "44")
+        .run();
+      await scheduled.scheduled({
+        cron: "* * * * *",
+        scheduledTime: Date.now(),
+      });
+      assert.equal(
+        await db.prepare("SELECT id FROM users WHERE id=?").bind("44").first(),
+        null,
+      );
+      assert.ok(
+        await db.prepare("SELECT id FROM users WHERE id=?").bind("43").first(),
       );
     } finally {
       await mf.dispose();

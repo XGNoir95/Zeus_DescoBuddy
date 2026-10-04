@@ -1,4 +1,7 @@
-# Validation — 3 October 2026
+# Archived local-edition validation — 3 October 2026
+
+This predates the current cloud hardening work; run the current checks in the
+repository root README before relying on a new deployment.
 
 ## Passed locally
 
