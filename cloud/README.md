@@ -153,8 +153,11 @@ GitHub; the workflow preserves existing Worker secrets. If using GitHub's
 production environment approvals, deployments wait for those approvals.
 
 The workflow applies additive D1 migrations then deploys. It does not provision
-paid resources or activate the webhook. Production stays unconfigured until
-the owner's Cloudflare authentication and initial setup are completed.
+paid resources or activate the webhook. For this repository, the account and
+database variables and a narrowly scoped deployment token are configured; a
+manual workflow run on 4 October 2026 passed both check and deploy jobs.
+Forks must configure their own Cloudflare account, database, secrets and
+Telegram webhook before using automatic deployment.
 
 ## Development and verification
 
