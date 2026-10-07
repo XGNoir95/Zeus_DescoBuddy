@@ -191,6 +191,60 @@ export function auditBalance(state) {
     ? "Balance change matches DESCO’s reported cost."
     : `⚠️ Balance/cost difference: ${money(difference)}. Timing or missing adjustments may explain this; needs checking.`;
 }
+// A midnight balance is a snapshot, not a tariff ledger. This is only an
+// estimate for one complete day; the daily DESCO record remains authoritative.
+export function balanceDayEstimate(previous, current, receipts, freshReceipts) {
+  const before = instant(previous?.readingTime),
+    after = instant(current?.readingTime),
+    previousDay = dateOf(previous?.readingTime),
+    currentDay = dateOf(current?.readingTime),
+    oldBalance = num(previous?.balance),
+    newBalance = num(current?.balance);
+  if (
+    !freshReceipts ||
+    !Array.isArray(receipts) ||
+    !before ||
+    !after ||
+    !previousDay ||
+    currentDay !== shift(previousDay, 1) ||
+    before !== instant(`${previousDay} 00:00:00`) ||
+    after !== instant(`${currentDay} 00:00:00`) ||
+    oldBalance === null ||
+    newBalance === null ||
+    (previous.meterNo &&
+      current.meterNo &&
+      previous.meterNo !== current.meterNo)
+  )
+    return null;
+  let credit = new Decimal(0);
+  const seen = new Set();
+  for (const receipt of receipts) {
+    const when = instant(receipt.rechargeDate);
+    if (!when) return null;
+    if (when <= before || when >= after) continue;
+    const amount = num(receipt.energyAmount);
+    if (
+      !receipt.orderID ||
+      seen.has(String(receipt.orderID)) ||
+      receipt.orderStatus !== "Successful" ||
+      amount === null ||
+      amount.lt(0) ||
+      (receipt.meterNo &&
+        current.meterNo &&
+        receipt.meterNo !== current.meterNo)
+    )
+      return null;
+    seen.add(String(receipt.orderID));
+    credit = credit.plus(amount);
+  }
+  const cost = oldBalance.plus(credit).minus(newBalance);
+  if (cost.lt(0)) return null;
+  return {
+    date: previousDay,
+    cost: cost.toFixed(2),
+    credit: credit.toFixed(2),
+  };
+}
 export function costLine(row = {}) {
   const u = num(row.units),
     c = num(row.cost);

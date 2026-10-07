@@ -28,4 +28,10 @@ test("Telegram hierarchy escapes source values and Bangla keeps commands", () =>
     ),
     /বাড়তি ব্যালেন্স সতর্কতা সরানো হয়েছে/,
   );
+  const early = renderMessage(
+    "📥 New DESCO reading\nDay 2026-10-06: about ৳285.17 spent from the balance change.\nEstimate may include other charges; daily kWh is pending.",
+    "bn",
+  );
+  assert.match(early, /প্রায় ৳285\.17 ব্যালেন্সের পার্থক্য থেকে খরচ/);
+  assert.doesNotMatch(early, /spent from the balance change/);
 });

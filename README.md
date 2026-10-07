@@ -31,6 +31,11 @@ authorized to manage. Each Telegram user connects their own meter.
 
 By default, the bot checks for newly published readings and recharges and
 alerts when DESCO's reported balance falls below **৳500, ৳300 or ৳200**.
+When DESCO posts consecutive midnight balances, one reading notice estimates
+the previous day's spend from their difference (plus any confirmed net recharge
+credit during that day). The later daily kWh record is checked silently; the
+bot sends another notice only if the amounts differ. The early amount is an
+estimate and may include other charges or adjustments, not just electricity.
 Optional schedules and personal alerts can be turned off without stopping
 those regular notices. Checks aim for approximately 15 minutes per user, but
 can take longer at free-tier capacity. DESCO may publish a reading late; the

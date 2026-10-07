@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import {
   auditReceipt,
+  balanceDayEstimate,
   costLine,
   dailyDeltas,
   historyReport,
@@ -70,6 +71,70 @@ test("daily counters preserve gaps, monthly resets, zero usage and meter changes
   assert.equal(deltas[3].cost, null);
   assert.equal(deltas[4].cost, null);
   assert.equal(costLine(deltas[1]), "10 kWh × ৳6.0000 ≈ ৳60.00");
+});
+test("midnight balance change estimates one day and uses net recharge credit", () => {
+  const previous = {
+    readingTime: "2026-10-06 00:00:00",
+    balance: "3956.10",
+    meterNo: "M",
+  };
+  const current = {
+    readingTime: "2026-10-07 00:00:00",
+    balance: "3670.93",
+    meterNo: "M",
+  };
+  assert.deepEqual(balanceDayEstimate(previous, current, [], true), {
+    date: "2026-10-06",
+    cost: "285.17",
+    credit: "0.00",
+  });
+  assert.deepEqual(
+    balanceDayEstimate(
+      previous,
+      current,
+      [
+        {
+          orderID: "1",
+          rechargeDate: "2026-10-06 12:00:00",
+          orderStatus: "Successful",
+          energyAmount: "4493.39",
+          meterNo: "M",
+        },
+      ],
+      true,
+    ),
+    { date: "2026-10-06", cost: "4778.56", credit: "4493.39" },
+  );
+  assert.equal(balanceDayEstimate(previous, current, [], false), null);
+  assert.equal(
+    balanceDayEstimate(
+      previous,
+      { ...current, readingTime: "2026-10-08 00:00:00" },
+      [],
+      true,
+    ),
+    null,
+  );
+  assert.equal(
+    balanceDayEstimate(previous, { ...current, meterNo: "OTHER" }, [], true),
+    null,
+  );
+  assert.equal(
+    balanceDayEstimate(
+      previous,
+      current,
+      [
+        {
+          orderID: "2",
+          rechargeDate: "2026-10-06 12:00:00",
+          orderStatus: "Pending",
+          energyAmount: "100",
+        },
+      ],
+      true,
+    ),
+    null,
+  );
 });
 test("same-day multiple recharges do not duplicate daily costs", () => {
   const r = {

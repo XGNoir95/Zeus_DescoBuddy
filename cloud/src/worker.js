@@ -3,6 +3,7 @@ import { allowUpdate, BodyTooLarge, readUpdate } from "./guard.js";
 import {
   auditBalance,
   auditReceipt,
+  balanceDayEstimate,
   costLine,
   dailyDeltas,
   dhakaDate,
@@ -117,6 +118,14 @@ const balanceKey = (b) =>
   b
     ? JSON.stringify([b.readingTime, b.balance, b.currentMonthConsumption])
     : null;
+function balanceFromKey(key, meterNo) {
+  try {
+    const [readingTime, balance, currentMonthConsumption] = JSON.parse(key);
+    return { readingTime, balance, currentMonthConsumption, meterNo };
+  } catch {
+    return null;
+  }
+}
 const completeDays = (state) =>
   Object.fromEntries(
     dailyDeltas(state.cache?.daily?.data)
@@ -129,7 +138,9 @@ function initializeReadingBaseline(state) {
   if (state.readingSeen) return;
   state.readingSeen = {
     balance: balanceKey(state.cache?.balance?.data),
+    balanceData: state.cache?.balance?.data || null,
     days: completeDays(state),
+    estimates: {},
   };
 }
 export class InputError extends Error {}
@@ -200,7 +211,7 @@ export function scheduleSlot(schedule, now = Date.now()) {
   }
   return `${shift(today, -days)}T${schedule.time}+06:00`;
 }
-function notifications(state) {
+export function notifications(state) {
   const out = [],
     receipts = state.cache?.recharges?.data || [],
     b = state.cache?.balance?.data;
@@ -251,22 +262,84 @@ function notifications(state) {
         ...state.readingSeen.days,
         ...completeDays(state),
       };
-    if (!state.failures?.includes("balance"))
+    if (!state.failures?.includes("balance")) {
       state.readingSeen.balance = balanceKey(b);
+      state.readingSeen.balanceData = b || null;
+    }
     return [];
   }
   initializeReadingBaseline(state);
+  state.readingSeen.estimates ||= {};
   const newReadings = [];
+  const rows = new Map(
+    dailyDeltas(state.cache?.daily?.data).map((row) => [row.date, row]),
+  );
+  const current = state.failures?.includes("daily") ? {} : completeDays(state);
+  let balanceChanged = false;
+  if (!state.failures?.includes("balance") && b) {
+    const fingerprint = balanceKey(b);
+    if (
+      state.readingSeen.balance &&
+      state.readingSeen.balance !== fingerprint
+    ) {
+      balanceChanged = true;
+      const previous =
+        state.readingSeen.balanceData ||
+        balanceFromKey(state.readingSeen.balance, state.profile?.meter);
+      const estimate = balanceDayEstimate(
+        previous,
+        b,
+        receipts,
+        !state.failures?.includes("recharges") &&
+          Boolean(state.cache?.recharges),
+      );
+      if (estimate) {
+        state.readingSeen.estimates[estimate.date] = estimate.cost;
+        const official = rows.get(estimate.date);
+        if (current[estimate.date]) {
+          newReadings.push(`Day ${estimate.date}: ${costLine(official)}`);
+          state.readingSeen.days[estimate.date] = current[estimate.date];
+          const difference = num(estimate.cost).minus(official.cost).abs();
+          if (difference.gt("0.01"))
+            newReadings.push(
+              `⚠️ Balance change differs from DESCO cost by ${money(difference)}. Check /audit.`,
+            );
+        } else {
+          newReadings.push(
+            `Day ${estimate.date}: about ${money(estimate.cost)} spent from the balance change.`,
+          );
+          if (num(estimate.credit).gt(0))
+            newReadings.push(
+              `Recharge credit added: ${money(estimate.credit)}`,
+            );
+          newReadings.push(
+            "Estimate may include other charges; daily kWh is pending.",
+          );
+        }
+      }
+      newReadings.push(
+        `Balance: ${money(b.balance)}\nMeter reading: ${b.readingTime || "Pending"} Dhaka`,
+      );
+    }
+    state.readingSeen.balance = fingerprint;
+    state.readingSeen.balanceData = b;
+  }
   if (!state.failures?.includes("daily")) {
-    const current = completeDays(state);
     for (const [date, fingerprint] of Object.entries(current))
       if (state.readingSeen.days[date] !== fingerprint) {
-        const row = dailyDeltas(state.cache.daily.data).find(
-          (r) => r.date === date,
-        );
-        newReadings.push(
-          `${state.readingSeen.days[date] ? "Updated" : "Day"} ${date}: ${costLine(row)}`,
-        );
+        const row = rows.get(date),
+          estimate = num(state.readingSeen.estimates[date]);
+        if (estimate !== null) {
+          const difference = estimate.minus(row.cost).abs();
+          if (difference.gt("0.01"))
+            out.push({
+              event: `cost-difference:${date}:${fingerprint}`,
+              text: `⚠️ Cost difference for ${date}\nBalance change suggested ${money(estimate)}; DESCO daily cost is ${money(row.cost)}. Difference: ${money(difference)}. Other charges or corrections may explain it. Check /audit.`,
+            });
+        } else
+          newReadings.push(
+            `${state.readingSeen.days[date] ? "Updated" : "Day"} ${date}: ${costLine(row)}`,
+          );
       }
     state.readingSeen.days = Object.fromEntries(
       Object.entries({ ...state.readingSeen.days, ...current }).filter(
@@ -274,14 +347,11 @@ function notifications(state) {
       ),
     );
   }
-  if (!state.failures?.includes("balance") && b) {
-    const fingerprint = balanceKey(b);
-    if (state.readingSeen.balance && state.readingSeen.balance !== fingerprint)
-      newReadings.push(
-        `Balance: ${money(b.balance)}\nMeter reading: ${b.readingTime || "Pending"} Dhaka`,
-      );
-    state.readingSeen.balance = fingerprint;
-  }
+  state.readingSeen.estimates = Object.fromEntries(
+    Object.entries(state.readingSeen.estimates).filter(
+      ([date]) => date >= shift(dhakaDate(), -45),
+    ),
+  );
   if (newReadings.length)
     out.push({
       event: `reading:${JSON.stringify(state.readingSeen)}`,
@@ -290,10 +360,11 @@ function notifications(state) {
   if (!state.failures?.includes("balance")) {
     for (const [id, r] of Object.entries(state.pending))
       if (instant(b?.readingTime) >= instant(r.rechargeDate)) {
-        out.push({
-          event: `after:${id}`,
-          text: `⚡ Balance reading after recharge\nBalance: ${money(b.balance)}\nReading: ${b.readingTime} Dhaka\nIncludes any usage since payment.`,
-        });
+        if (!balanceChanged)
+          out.push({
+            event: `after:${id}`,
+            text: `⚡ Balance reading after recharge\nBalance: ${money(b.balance)}\nReading: ${b.readingTime} Dhaka\nIncludes any usage since payment.`,
+          });
         delete state.pending[id];
       }
     const thresholds = [

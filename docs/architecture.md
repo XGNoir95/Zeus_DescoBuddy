@@ -21,6 +21,17 @@ lease. `updates` deduplicates Telegram retries; the encrypted outbox retains
 unsent notices. A successful send followed by a crash before outbox deletion
 can still duplicate a message. There is no claim of exactly-once delivery.
 
+For daily notices, a pair of consecutive midnight balance readings gives a
+provisional spend for the intervening day: previous balance + confirmed net
+recharge credit - new balance. Only a matching meter, consecutive dates, fresh
+receipt history and nonnegative result qualify. The reading notice includes
+this estimate and the DESCO reading time. The later DESCO daily record is
+reconciled silently when it agrees, or produces a cautious difference notice
+when it does not. If an estimate is unsafe, the bot sends the balance notice
+without claiming a daily cost; the actual daily record may then arrive as a
+separate notice. A balance change can include fees, corrections or late
+recharges, so the estimate never proves tariff or meter accuracy.
+
 ## Capacity budget
 
 At 50 connected users and a 15-minute desired interval, fully meeting the
