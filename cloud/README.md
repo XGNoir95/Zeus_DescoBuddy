@@ -4,6 +4,20 @@ Public, private-chat Telegram bot for Cloudflare Workers Free and D1. No PC,
 Docker server or purchased domain is needed. The existing Python application
 in the parent folder remains a separate private/local edition.
 
+**Just want to use the bot?** Open [@Zeus1810_bot](https://t.me/Zeus1810_bot)
+and follow the [Telegram quick start](../README.md#get-started-in-telegram).
+The deployment steps below are for people operating their own copy.
+
+## Contents
+
+- [What is implemented](#what-is-implemented)
+- [Use the Telegram bot](#use-the-telegram-bot)
+- [Free capacity and current limits](#free-capacity-and-current-limits)
+- [One-time setup on Windows CMD](#one-time-setup-on-windows-cmd)
+- [CI/CD](#cicd)
+- [Development and verification](#development-and-verification)
+- [Sources](#sources)
+
 ## What is implemented
 
 - Per-Telegram-user profiles, account/meter validation and isolated data.
@@ -92,7 +106,10 @@ and pending days; orange marks represent probable costs. Each completed
 Sunday–Saturday week and calendar month receives one automatic graph, but only
 after DESCO has supplied official cost and kWh for every day in the period.
 Publishing delays can move this beyond the weekend or month end. `/extras off`
-does not stop these standard graphs; `/pause` does.
+does not stop these standard graphs; `/pause` does. See the
+[illustrative graph](../assets/usage-chart-example.png) for the colour key.
+Graph image labels are currently English; captions follow the selected chat
+language.
 
 ## Free capacity and current limits
 
@@ -121,13 +138,36 @@ historical evidence archive. On-demand older months are fetched from DESCO.
 
 ## One-time setup on Windows CMD
 
-Prerequisites: Node 22+, a free Cloudflare account, and the existing local .env
-containing your Telegram bot token. Do not paste credentials in chat or GitHub.
+Prerequisites: Node.js 22+, Git, a free Cloudflare account, and a Telegram bot
+token created with BotFather. Do not paste credentials in chat or GitHub.
+Users of the existing public bot do **not** need to run these commands.
+
+Fork this repository on GitHub first. On a fresh clone of **your fork**,
+install the cloud dependencies and sign in to Cloudflare (replace `YOUR_NAME`
+with your GitHub username):
 
 ```cmd
-cd /d D:\DownLoadF\DescoBuddy\cloud
+git clone https://github.com/YOUR_NAME/Zeus_DescoBuddy.git
+cd Zeus_DescoBuddy\cloud
 npm ci
 npx wrangler login
+```
+
+Before your first setup, edit `cloud/wrangler.jsonc` in **your fork** and set
+`d1_databases[0].database_id` to
+`00000000-0000-0000-0000-000000000000`. The checked-in UUID belongs to the
+original deployment; the zero value tells setup to find or create a database
+in **your** Cloudflare account. Do not change the UUID in an existing working
+deployment. Commit your fork's resulting `wrangler.jsonc` after setup so CI
+deploys to the same database.
+
+Create the **repository-root** `.env` file (one directory above `cloud`), and
+put `TELEGRAM_BOT_TOKEN=your_token_here` in it. If this file already exists,
+keep it; do not overwrite a working configuration. It is ignored by Git. The
+cloud setup reads that token but does not use the Python edition's
+`OWNER_TELEGRAM_ID` setting. Then run:
+
+```cmd
 npm run setup
 ```
 
@@ -156,10 +196,10 @@ local historical evidence archive is not part of this implementation.
 ## CI/CD
 
 GitHub Actions runs tests and bundles the Worker on pushes/PRs. Production
-deployment runs on main only after the following repository variables exist:
+deployment runs on `main` only after the following repository variables exist:
 
 - `CLOUDFLARE_ACCOUNT_ID`
-- `CLOUDFLARE_D1_DATABASE_ID` (setup prints the database UUID)
+- `CLOUDFLARE_D1_DATABASE_ID` (copy the UUID from `cloud/wrangler.jsonc` after setup)
 
 Add repository secret `CLOUDFLARE_API_TOKEN`: restrict it to this Cloudflare
 account with Workers Scripts Edit and D1 Edit. Account read permissions may be
@@ -168,11 +208,12 @@ GitHub; the workflow preserves existing Worker secrets. If using GitHub's
 production environment approvals, deployments wait for those approvals.
 
 The workflow applies additive D1 migrations then deploys. It does not provision
-paid resources or activate the webhook. For this repository, the account and
-database variables and a narrowly scoped deployment token are configured; a
-manual workflow run on 4 October 2026 passed both check and deploy jobs.
-Forks must configure their own Cloudflare account, database, secrets and
-Telegram webhook before using automatic deployment.
+paid resources or activate the webhook. This repository is configured for
+automatic deployment from `main`; forks must configure their own Cloudflare
+account, database, secrets and Telegram webhook first. Existing Worker secrets
+remain in Cloudflare across code deployments. Check the GitHub Actions run and
+deployed Worker health after each change; a green local test alone does not
+confirm production is healthy.
 
 ## Development and verification
 
