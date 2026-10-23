@@ -189,6 +189,8 @@ secret. It checks connectivity, not meter accuracy or schedule delivery.
 
 Charts use antialiased glyphs generated from the SIL-licensed Roboto font at
 build time; the Worker does not load a system font or call an image service.
+Their navy, yellow, and white are sampled from the repository's Zeus logo;
+orange marks unofficial probable costs, while pale lavender marks kWh.
 To regenerate the committed glyph atlas after changing the chart typography,
 run `npm run font:build`. The font license is in
 [`assets/Roboto-OFL.txt`](assets/Roboto-OFL.txt).

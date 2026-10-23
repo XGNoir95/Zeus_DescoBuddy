@@ -1,13 +1,14 @@
 import atlas from "./font-atlas.js";
 
 // The generated atlas uses real Roboto outlines rasterized at build time.
-// Seven premultiplied shades keep the indexed PNG small and smooth.
+// Six premultiplied shades leave room for the brand colors in indexed PNG.
+const SHADES = 6;
 export function fontPalette(baseColors, foregroundColors) {
   const palette = [...baseColors];
   for (const base of baseColors)
     for (const foreground of foregroundColors)
-      for (let shade = 1; shade <= 7; shade++) {
-        const opacity = shade / 7;
+      for (let shade = 1; shade <= SHADES; shade++) {
+        const opacity = shade / SHADES;
         palette.push(
           base.map((component, i) =>
             Math.round(component * (1 - opacity) + foreground[i] * opacity),
@@ -67,7 +68,7 @@ export function drawFontText(
           const offset = row * letter.w + column;
           const packed = letter.bytes[offset >> 1];
           const alpha = offset & 1 ? packed & 15 : packed >> 4;
-          const shade = Math.round((alpha * 7) / 15);
+          const shade = Math.round((alpha * SHADES) / 15);
           if (!shade) continue;
           const index = py * width + px;
           const background =
@@ -75,12 +76,12 @@ export function drawFontText(
               ? pixels[index]
               : Math.floor(
                   (pixels[index] - baseColorCount) /
-                    (foregroundIndices.length * 7),
+                    (foregroundIndices.length * SHADES),
                 );
           pixels[index] =
             baseColorCount +
-            background * foregroundIndices.length * 7 +
-            foreground * 7 +
+            background * foregroundIndices.length * SHADES +
+            foreground * SHADES +
             shade -
             1;
         }

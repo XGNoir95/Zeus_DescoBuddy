@@ -133,16 +133,22 @@ test("graph renderer produces a valid bounded PNG", () => {
   assert.equal(new DataView(png.buffer).getUint32(20), 900);
   assert.ok(png.length < 1000000);
   let offset = 8,
-    idat;
+    idat,
+    palette;
   while (offset < png.length) {
     const length = new DataView(png.buffer).getUint32(offset),
       type = new TextDecoder().decode(png.slice(offset + 4, offset + 8));
+    if (type === "PLTE") palette = png.slice(offset + 8, offset + 8 + length);
     if (type === "IDAT") {
       idat = png.slice(offset + 8, offset + 8 + length);
       break;
     }
     offset += 12 + length;
   }
+  assert.ok(palette.length <= 256 * 3);
+  assert.deepEqual([...palette.slice(0, 3)], [20, 27, 58]);
+  assert.deepEqual([...palette.slice(12, 15)], [255, 197, 51]);
+  assert.deepEqual([...palette.slice(18, 21)], [238, 241, 249]);
   const raw = inflateSync(idat);
   assert.equal(raw.length, 900 * 761);
   assert.ok(new Set(raw).size > 20, "real-font edges should be antialiased");

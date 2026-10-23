@@ -4,24 +4,28 @@ import { drawFontText, fontPalette } from "./font.js";
 const WIDTH = 760;
 const HEIGHT = 900;
 const COLORS = [
-  [9, 23, 36], // background
-  [17, 42, 61], // card
-  [43, 74, 94], // grid
-  [84, 199, 217], // confirmed
-  [245, 184, 101], // probable
-  [246, 250, 255], // white
-  [169, 189, 204], // muted
-  [28, 60, 79], // subdued box
+  [20, 27, 58], // logo navy, background
+  [29, 39, 80], // card
+  [40, 52, 95], // elevated card / subtle outline
+  [69, 81, 122], // grid and hairlines
+  [255, 197, 51], // logo yellow, confirmed cost
+  [244, 151, 99], // warm orange, unofficial cost
+  [238, 241, 249], // logo white
+  [167, 178, 208], // secondary text
+  [180, 192, 231], // kWh, cool neutral from logo white/navy
+  [49, 61, 103], // pending placeholder
 ];
 const C = {
   bg: 0,
   card: 1,
-  grid: 2,
-  official: 3,
-  estimate: 4,
-  white: 5,
-  muted: 6,
-  box: 7,
+  raised: 2,
+  grid: 3,
+  official: 4,
+  estimate: 5,
+  white: 6,
+  muted: 7,
+  units: 8,
+  box: 9,
 };
 const TEXT_COLORS = [C.official, C.estimate, C.white, C.muted];
 const PALETTE = fontPalette(
@@ -38,6 +42,37 @@ function canvas() {
       bottom = Math.min(HEIGHT, Math.ceil(y + h));
     for (let row = top; row < bottom; row++)
       pixels.fill(color, row * WIDTH + left, row * WIDTH + right);
+  };
+  const roundRect = (x, y, w, h, radius, color) => {
+    const r = Math.min(radius, Math.floor(w / 2), Math.floor(h / 2));
+    rect(x + r, y, w - 2 * r, h, color);
+    rect(x, y + r, w, h - 2 * r, color);
+    for (let row = 0; row < r; row++) {
+      const inset = Math.ceil(r - Math.sqrt(r * r - (r - row - 0.5) ** 2));
+      rect(x + inset, y + row, w - 2 * inset, 1, color);
+      rect(x + inset, y + h - row - 1, w - 2 * inset, 1, color);
+    }
+  };
+  const polygon = (points, color) => {
+    const top = Math.floor(Math.min(...points.map((point) => point[1])));
+    const bottom = Math.ceil(Math.max(...points.map((point) => point[1])));
+    for (let y = top; y < bottom; y++) {
+      const crossings = [];
+      for (let i = 0; i < points.length; i++) {
+        const a = points[i],
+          b = points[(i + 1) % points.length];
+        if (
+          (a[1] <= y + 0.5 && b[1] > y + 0.5) ||
+          (b[1] <= y + 0.5 && a[1] > y + 0.5)
+        )
+          crossings.push(
+            a[0] + ((y + 0.5 - a[1]) * (b[0] - a[0])) / (b[1] - a[1]),
+          );
+      }
+      crossings.sort((a, b) => a - b);
+      for (let i = 0; i + 1 < crossings.length; i += 2)
+        rect(crossings[i], y, crossings[i + 1] - crossings[i], 1, color);
+    }
   };
   const line = (x0, y0, x1, y1, color, thickness = 2) => {
     x0 = Math.round(x0);
@@ -83,7 +118,7 @@ function canvas() {
       TEXT_COLORS,
       COLORS.length,
     );
-  return { pixels, rect, line, text };
+  return { pixels, rect, roundRect, polygon, line, text };
 }
 
 function crcTable() {
@@ -168,11 +203,14 @@ function png(pixels) {
   return bytes;
 }
 
-function panelBase(g, y, heading, max) {
-  g.rect(30, y, 700, 245, C.card);
-  g.text(heading, 55, y + 22, 3, C.white);
-  const top = y + 78,
-    bottom = y + 202;
+function panelBase(g, y, heading, max, available, total) {
+  g.roundRect(30, y, 700, 235, 16, C.raised);
+  g.roundRect(32, y + 2, 696, 231, 14, C.card);
+  g.text(heading, 54, y + 20, 3, C.white);
+  g.text(`${available}/${total} DAYS`, 700, y + 23, 2, C.muted, "right");
+  g.rect(54, y + 53, 36, 3, C.official);
+  const top = y + 79,
+    bottom = y + 193;
   for (const fraction of [0, 0.5, 1]) {
     const lineY = bottom - fraction * (bottom - top);
     g.line(70, lineY, 710, lineY, C.grid, 1);
@@ -188,34 +226,49 @@ function panelBase(g, y, heading, max) {
   return { top, bottom };
 }
 function weeklyPanel(g, y, heading, rows, field, max) {
-  const { top, bottom } = panelBase(g, y, heading, max);
+  const { top, bottom } = panelBase(
+    g,
+    y,
+    heading,
+    max,
+    rows.filter((row) => row[field] != null).length,
+    rows.length,
+  );
   rows.forEach((row, i) => {
     const value = row[field] == null ? null : Number(row[field]),
       x = 97 + i * 95,
-      color = row.estimated && field === "cost" ? C.estimate : C.official;
+      color =
+        field === "units" ? C.units : row.estimated ? C.estimate : C.official;
     if (value !== null && Number.isFinite(value)) {
       const height = Math.max(
         value > 0 ? 2 : 0,
         Math.round((value / max) * (bottom - top)),
       );
-      g.rect(x - 26, bottom - height, 52, height, color);
+      g.roundRect(x - 24, bottom - height, 48, height, 5, color);
       g.text(
         field === "cost" ? value.toFixed(2) : value.toFixed(3),
         x,
-        bottom - height - 20,
+        bottom - height - 23,
         2,
-        color,
+        field === "units" ? C.white : color,
         "center",
       );
     } else {
-      g.rect(x - 24, bottom - 31, 48, 31, C.box);
-      g.text("?", x, bottom - 24, 2, C.muted, "center");
+      g.roundRect(x - 24, bottom - 30, 48, 30, 5, C.box);
+      g.text("?", x, bottom - 25, 2, C.muted, "center");
     }
-    g.text(row.date.slice(8), x, bottom + 13, 2, C.muted, "center");
+    g.text(row.date.slice(8), x, bottom + 12, 2, C.muted, "center");
   });
 }
 function monthlyPanel(g, y, heading, rows, field, max) {
-  const { top, bottom } = panelBase(g, y, heading, max);
+  const { top, bottom } = panelBase(
+    g,
+    y,
+    heading,
+    max,
+    rows.filter((row) => row[field] != null).length,
+    rows.length,
+  );
   let prior = null;
   rows.forEach((row, i) => {
     const x = 82 + i * (616 / Math.max(1, rows.length - 1)),
@@ -228,7 +281,7 @@ function monthlyPanel(g, y, heading, rows, field, max) {
       g.text(
         String(Number(row.date.slice(8))),
         x,
-        bottom + 13,
+        bottom + 12,
         2,
         C.muted,
         "center",
@@ -238,7 +291,8 @@ function monthlyPanel(g, y, heading, rows, field, max) {
       return;
     }
     const pointY = bottom - (value / max) * (bottom - top),
-      color = row.estimated && field === "cost" ? C.estimate : C.official;
+      color =
+        field === "units" ? C.units : row.estimated ? C.estimate : C.official;
     if (prior) g.line(prior.x, prior.y, x, pointY, color, 3);
     g.rect(x - 3, pointY - 3, 7, 7, color);
     prior = { x, y: pointY };
@@ -278,35 +332,72 @@ export function renderChart(spec) {
     units = rows.reduce((sum, row) => sum + (row.units || 0), 0),
     costMax = Math.max(1, ...rows.map((row) => row.cost || 0)) * 1.14,
     unitMax = Math.max(1, ...rows.map((row) => row.units || 0)) * 1.14;
-  g.text("ZEUS DESCOBUDDY", 39, 32, 3, C.official);
+  // The exact navy, yellow, and white come from assets/zeus-logo-horizontal-dark.png.
+  g.roundRect(30, 25, 56, 56, 12, C.official);
+  g.rect(44, 39, 29, 7, C.bg);
+  g.polygon(
+    [
+      [67, 46],
+      [75, 46],
+      [52, 69],
+      [44, 69],
+    ],
+    C.bg,
+  );
+  g.rect(44, 67, 30, 7, C.bg);
+  g.text("ZEUS", 103, 29, 5, C.white);
+  g.text("DESCOBUDDY", 105, 67, 2, C.muted);
   g.text(
-    spec.kind === "week" ? "WEEKLY GRAPH" : "MONTHLY GRAPH",
-    39,
-    79,
+    spec.kind === "week" ? "WEEKLY USAGE" : "MONTHLY USAGE",
+    31,
+    107,
     5,
     C.white,
   );
-  g.text(`${spec.start} TO ${spec.end}`, 41, 130, 3, C.muted);
-  g.rect(30, 177, 340, 92, C.card);
-  g.rect(390, 177, 340, 92, C.card);
-  g.text("COST SHOWN (TK)", 52, 196, 3, C.muted);
-  g.text(totalCost.toFixed(2), 52, 226, 5, C.white);
-  g.text("DESCO KWH", 412, 196, 3, C.muted);
-  g.text(units.toFixed(3), 412, 226, 5, C.white);
+  g.text(`${spec.start} TO ${spec.end}`, 32, 153, 3, C.muted);
+  g.rect(30, 187, 700, 2, C.grid);
+  g.rect(30, 187, 96, 3, C.official);
+
+  g.roundRect(30, 205, 426, 112, 14, C.raised);
+  g.roundRect(32, 207, 422, 108, 12, C.card);
+  g.rect(50, 225, 4, 66, C.official);
+  g.text("COST SHOWN", 70, 221, 3, C.muted);
+  g.text(`TK ${totalCost.toFixed(2)}`, 70, 251, 5, C.white);
+  g.text(
+    totalCost > officialCost ? "INCLUDES PROBABLE COST" : "DESCO DAILY COST",
+    70,
+    289,
+    2,
+    totalCost > officialCost ? C.estimate : C.muted,
+  );
+
+  g.roundRect(473, 205, 257, 112, 14, C.raised);
+  g.roundRect(475, 207, 253, 108, 12, C.card);
+  g.rect(493, 225, 4, 66, C.units);
+  g.text("UNITS SHOWN", 513, 221, 3, C.muted);
+  g.text(units.toFixed(3), 513, 251, 5, C.white);
+  g.text("DESCO KWH", 513, 289, 2, C.muted);
+
   const draw = spec.kind === "week" ? weeklyPanel : monthlyPanel;
-  draw(g, 292, "DAILY COST (TK)", rows, "cost", costMax);
-  draw(g, 554, "ELECTRICITY (KWH)", rows, "units", unitMax);
-  g.rect(31, 824, 20, 20, C.official);
-  g.text("DESCO CONFIRMED", 61, 826, 3, C.muted);
-  g.rect(414, 824, 20, 20, C.estimate);
-  g.text("PROBABLE COST", 444, 826, 3, C.muted);
+  draw(g, 337, "DAILY COST / TK", rows, "cost", costMax);
+  draw(g, 588, "ELECTRICITY / KWH", rows, "units", unitMax);
+
+  g.roundRect(30, 843, 16, 16, 4, C.official);
+  g.text("DESCO COST", 55, 841, 2, C.muted);
+  g.roundRect(244, 843, 16, 16, 4, C.estimate);
+  g.text("PROBABLE", 269, 841, 2, C.muted);
+  g.roundRect(446, 843, 16, 16, 4, C.units);
+  g.text("KWH", 471, 841, 2, C.muted);
   if (totalCost > officialCost)
     g.text(
-      `INCLUDES TK ${(totalCost - officialCost).toFixed(2)} UNOFFICIAL`,
-      39,
-      858,
+      `PROBABLE TK ${(totalCost - officialCost).toFixed(2)} IS NOT DESCO DAILY COST`,
+      31,
+      870,
       2,
       C.estimate,
     );
+  else if (rows.some((row) => row.cost == null || row.units == null))
+    g.text("PENDING DAYS ARE NOT COUNTED IN TOTALS", 31, 870, 2, C.muted);
+  else g.text("ALL DAYS HAVE DESCO-PUBLISHED VALUES", 31, 870, 2, C.muted);
   return png(g.pixels);
 }
