@@ -7,6 +7,7 @@ import {
   costLine,
   dailyDeltas,
   dhakaDate,
+  estimatedCosts,
   historyReport,
   instant,
   money,
@@ -27,14 +28,21 @@ import {
   telegram,
   track,
 } from "./store.js";
+import {
+  automaticGraphs,
+  graphMessage,
+  lastCompletedMonth,
+  lastCompletedWeek,
+} from "./graphs.js";
 
 export const COMMANDS = {
   start: "Connect your own DESCO meter",
   connect: "Link account and meter numbers",
   status: "Latest balance and daily cost",
   today: "Today or the latest available day",
-  week: "Previous seven days",
+  week: "Last seven days including today",
   month: "This month’s daily costs",
+  graph: "Weekly or monthly cost and kWh graph",
   recharges: "Latest recharge breakdown",
   history: "Recent recharge history",
   language: "Choose English or বাংলা",
@@ -56,6 +64,7 @@ Connect only your own meter:
 /connect ACCOUNT_NUMBER METER_NUMBER
 
 /status · /today · /week · /month
+/graph week · /graph month [YYYY-MM]
 /recharges — latest recharge
 /history — last 35 days
 /usage_history — this month
@@ -74,6 +83,8 @@ Connect only your own meter:
 /clear — recent messages (Telegram limits apply)
 /disconnect — remove your meter data
 
+Week graphs cover the last 7 days including today. Completed Sunday–Saturday weeks and calendar months are sent automatically after every day's official DESCO cost and kWh arrive. Orange costs are unofficial balance-based estimates.
+
 Times are Bangladesh time. DESCO may publish readings late. Each user's data is separate. Free hosting has capacity limits.`;
 const MENU = {
   inline_keyboard: [
@@ -84,6 +95,10 @@ const MENU = {
     [
       { text: "💳 Latest recharge", callback_data: "recharges" },
       { text: "📒 Usage history", callback_data: "usage_history" },
+    ],
+    [
+      { text: "📈 Week graph", callback_data: "graph week" },
+      { text: "📈 Month graph", callback_data: "graph month" },
     ],
     [
       { text: "📜 Recharge history", callback_data: "history" },
@@ -306,14 +321,14 @@ export function notifications(state) {
             );
         } else {
           newReadings.push(
-            `Day ${estimate.date}: about ${money(estimate.cost)} spent from the balance change.`,
+            `Day ${estimate.date}: probable cost deduction ${money(estimate.cost)} (unofficial, based on available balance readings).`,
           );
           if (num(estimate.credit).gt(0))
             newReadings.push(
               `Recharge credit added: ${money(estimate.credit)}`,
             );
           newReadings.push(
-            "Estimate may include other charges; daily kWh is pending.",
+            "DESCO daily cost and kWh are pending. This estimate may include other deductions.",
           );
         }
       }
@@ -579,6 +594,11 @@ async function command(env, id, state, update) {
     state.paused = name === "pause";
     state.pending = {};
     if (!state.paused && state.schedule) state.schedule.enabled = Date.now();
+    if (!state.paused)
+      state.autoGraphs = {
+        weekEnd: lastCompletedWeek().end,
+        monthEnd: lastCompletedMonth().end,
+      };
     await env.DB.prepare("DELETE FROM outbox WHERE user_id=?").bind(id).run();
     return {
       text: state.paused
@@ -701,7 +721,9 @@ async function command(env, id, state, update) {
       source.daily(state.profile, shift(start, -1), end),
       source.recharges(state.profile, start, end),
     ]);
-    return { text: historyReport(daily, receipts, start, end) };
+    return {
+      text: historyReport(daily, receipts, start, end, estimatedCosts(state)),
+    };
   }
   await refresh(state);
   const today = dhakaDate(),
@@ -709,13 +731,33 @@ async function command(env, id, state, update) {
       String(b.rechargeDate).localeCompare(String(a.rechargeDate)),
     );
   if (name === "status") return { text: statusReport(state), markup: MENU };
+  if (name === "graph") {
+    if (args[0] === "week" && args.length === 1) {
+      const start = shift(today, -6);
+      return graphMessage(state, "week", start, today);
+    }
+    if (args[0] === "month" && args.length <= 2) {
+      let start, end;
+      try {
+        [start, end] = monthRange(args[1] || today.slice(0, 7));
+      } catch (e) {
+        throw new InputError(e.message);
+      }
+      const daily =
+        args[1] && args[1] !== today.slice(0, 7)
+          ? await source.daily(state.profile, shift(start, -1), end)
+          : state.cache?.daily?.data;
+      return graphMessage(state, "month", start, end, daily);
+    }
+    throw new InputError("Use /graph week or /graph month [YYYY-MM].");
+  }
   if (["today", "week", "month"].includes(name)) {
-    const end = name === "week" ? shift(today, -1) : today,
+    const end = today,
       start =
         name === "today"
           ? today
           : name === "week"
-            ? shift(end, -6)
+            ? shift(today, -6)
             : `${today.slice(0, 7)}-01`;
     return { text: periodReport(state, start, end) };
   }
@@ -905,6 +947,7 @@ export default {
           initializeReadingBaseline(locked.state);
           await refresh(locked.state);
           messages.push(...notifications(locked.state));
+          messages.push(...(await automaticGraphs(locked.state, now)));
         }
         await commit(env, locked, messages);
         await drain(env, id);

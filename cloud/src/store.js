@@ -1,4 +1,5 @@
 import { localizeMarkup, renderMessage } from "./i18n.js";
+import { renderChart } from "./chart.js";
 
 const enc = new TextEncoder(),
   dec = new TextDecoder();
@@ -148,6 +149,7 @@ export async function commit(env, locked, messages, updateId = null) {
             sourceEvent: message.event,
             markup: localizeMarkup(message.markup, locked.state.language),
             document: i === 0 ? message.document : undefined,
+            graph: i === 0 ? message.graph : undefined,
           }),
           now,
           id,
@@ -239,7 +241,36 @@ export async function drain(env, id) {
   for (const row of results) {
     const content = await unseal(env, id, row.payload);
     let message;
-    if (content.document) {
+    if (content.graph) {
+      const form = new FormData();
+      form.set("chat_id", id);
+      form.set("caption", content.text);
+      form.set("parse_mode", "HTML");
+      if (content.markup)
+        form.set("reply_markup", JSON.stringify(content.markup));
+      form.set(
+        "photo",
+        new Blob([renderChart(content.graph)], { type: "image/png" }),
+        "descobuddy-usage.png",
+      );
+      let response;
+      try {
+        response = await fetch(
+          `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendPhoto`,
+          { method: "POST", body: form, signal: AbortSignal.timeout(15000) },
+        );
+      } catch {
+        throw new Error("Telegram graph delivery failed.");
+      }
+      const body = await response.json();
+      if (!body.ok) {
+        const error = new Error("Telegram graph rejected.");
+        error.code = body.error_code;
+        error.retryAfter = body.parameters?.retry_after;
+        throw error;
+      }
+      message = body.result;
+    } else if (content.document) {
       const form = new FormData();
       form.set("chat_id", id);
       form.set("caption", content.text);

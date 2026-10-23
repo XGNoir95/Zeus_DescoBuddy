@@ -9,6 +9,9 @@ import {
   historyReport,
   normalizeReceipt,
   monthRange,
+  periodReport,
+  statusReport,
+  usageSeries,
 } from "../src/finance.js";
 import { seal, unseal, chunks } from "../src/store.js";
 import { privateUser, scheduleSlot } from "../src/worker.js";
@@ -159,6 +162,46 @@ test("same-day multiple recharges do not duplicate daily costs", () => {
   assert.equal(text.match(/Deduction: ৳50.00/g).length, 3);
   assert.equal(text.match(/2026-09-02: 10 kWh/g).length, 1);
   assert.match(text, /2026-09-05: Waiting/);
+});
+test("balance-based probable cost appears across reports until DESCO cost replaces it", () => {
+  const today = new Date(Date.now() + 21600000).toISOString().slice(0, 10);
+  const day = new Date(Date.parse(`${today}T00:00:00Z`) - 86400000)
+    .toISOString()
+    .slice(0, 10);
+  const before = new Date(Date.parse(`${day}T00:00:00Z`) - 86400000)
+    .toISOString()
+    .slice(0, 10);
+  const state = {
+    profile: { account: "123456", meter: "M" },
+    cache: {
+      balance: { data: { balance: "200", readingTime: `${today} 00:00:00` } },
+      daily: {
+        data: [
+          {
+            date: before,
+            meterNo: "M",
+            consumedUnit: "100",
+            consumedTaka: "100",
+          },
+          { date: day, meterNo: "M", consumedUnit: "120", consumedTaka: "260" },
+        ],
+      },
+    },
+    readingSeen: { estimates: { [day]: "284.56" } },
+  };
+  // A DESCO kWh row with missing cost must not hide the probable deduction.
+  state.cache.daily.data[1].consumedTaka = null;
+  assert.equal(usageSeries(state, day, day)[0].cost, "284.56");
+  assert.match(statusReport(state), /probable cost deduction ৳284\.56/i);
+  assert.match(periodReport(state, day, day), /includes ৳284\.56 unofficial/);
+  assert.match(
+    historyReport(state.cache.daily.data, [], day, day, { [day]: "284.56" }),
+    /Probable cost deduction ৳284\.56/,
+  );
+  state.cache.daily.data[1].consumedTaka = "260";
+  const official = usageSeries(state, day, day)[0];
+  assert.equal(official.cost, "160");
+  assert.equal(official.estimated, false);
 });
 test("encryption is tied to user identity", async () => {
   const env = { DATA_KEY: randomBytes(32).toString("base64") };

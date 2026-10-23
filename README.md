@@ -16,7 +16,9 @@ authorized to manage. Each Telegram user connects their own meter.
 | Command                              | What you get                                                  |
 | ------------------------------------ | ------------------------------------------------------------- |
 | `/status`                            | Latest DESCO-reported balance and its reading time            |
-| `/today`, `/week`, `/month`          | Dated kWh and cost; latest complete day when today is pending |
+| `/today`, `/week`, `/month`          | Dated kWh and cost; probable balance deductions are labelled  |
+| `/graph week`                        | Cost and kWh picture for the last 7 days, including today     |
+| `/graph month [YYYY-MM]`             | Cost and kWh picture for this or a chosen month               |
 | `/recharges`, `/history`             | Latest recharge or recent recharge list                       |
 | `/usage_history [YYYY-MM]`           | Recharge credits, deductions and daily costs grouped by month |
 | `/audit`                             | Receipt arithmetic and cautious balance comparison            |
@@ -36,8 +38,14 @@ the previous day's spend from their difference (plus any confirmed net recharge
 credit during that day). The later daily kWh record is checked silently; the
 bot sends another notice only if the amounts differ. The early amount is an
 estimate and may include other charges or adjustments, not just electricity.
+The same probable cost appears in `/week`, `/month`, `/usage_history` and the
+graphs until DESCO publishes the official daily cost. It is never counted as
+confirmed kWh. A completed Sunday–Saturday week or calendar month gets one
+automatic graph once every day's official cost and kWh is available; graphs
+requested by command can show labelled incomplete days.
 Optional schedules and personal alerts can be turned off without stopping
-those regular notices. Checks aim for approximately 15 minutes per user, but
+those regular notices or completed-period graphs. `/pause` stops all automatic
+messages. Checks aim for approximately 15 minutes per user, but
 can take longer at free-tier capacity. DESCO may publish a reading late; the
 bot shows its actual source time. It cannot read the physical meter's instant
 balance, prove a tariff is legal, or verify ownership from the DESCO account

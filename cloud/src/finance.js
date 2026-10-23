@@ -245,6 +245,61 @@ export function balanceDayEstimate(previous, current, receipts, freshReceipts) {
     credit: credit.toFixed(2),
   };
 }
+function savedBalance(key, meterNo) {
+  try {
+    const [readingTime, balance] = JSON.parse(key);
+    return { readingTime, balance, meterNo };
+  } catch {
+    return null;
+  }
+}
+export function estimatedCosts(state) {
+  const saved = state.readingSeen?.estimates || {};
+  const estimates = Object.fromEntries(
+    Object.entries(saved).filter(([, value]) => num(value) !== null),
+  );
+  const current = state.cache?.balance?.data;
+  const previous =
+    state.readingSeen?.balanceData ||
+    savedBalance(state.readingSeen?.balance, state.profile?.meter) ||
+    state.previousBalance;
+  const live = balanceDayEstimate(
+    previous,
+    current,
+    state.cache?.recharges?.data,
+    !state.failures?.includes("recharges") && Boolean(state.cache?.recharges),
+  );
+  if (live) estimates[live.date] = live.cost;
+  return estimates;
+}
+export function usageSeries(
+  state,
+  start,
+  end,
+  daily = state.cache?.daily?.data,
+) {
+  const byDate = new Map(dailyDeltas(daily).map((row) => [row.date, row])),
+    estimates = estimatedCosts(state),
+    rows = [];
+  for (let date = start; date <= end; date = shift(date, 1)) {
+    const official = byDate.get(date),
+      estimate = date < dhakaDate() ? num(estimates[date]) : null;
+    rows.push({
+      date,
+      units: official?.units ?? null,
+      cost: official?.cost ?? estimate?.toFixed(2) ?? null,
+      estimated: official?.cost == null && estimate !== null,
+    });
+  }
+  return rows;
+}
+export function usageLine(row) {
+  if (row?.estimated)
+    return `${row.units == null ? "" : `${row.units} kWh · `}Probable cost deduction ${money(row.cost)} (unofficial, from balance readings); DESCO daily cost pending.`;
+  if (row?.cost != null && row?.units == null)
+    return `DESCO cost ${money(row.cost)}; kWh pending.`;
+  return costLine(row);
+}
 export function costLine(row = {}) {
   const u = num(row.units),
     c = num(row.cost);
@@ -264,9 +319,10 @@ export function latestLine(rows, today) {
 }
 export function statusReport(state) {
   const b = state.cache?.balance?.data || {},
-    rows = dailyDeltas(state.cache?.daily?.data);
-  const today = dhakaDate(),
-    row = rows.find((r) => r.date === today);
+    today = dhakaDate(),
+    rows = usageSeries(state, shift(today, -45), today),
+    row = rows.at(-1),
+    latest = rows.filter((r) => r.date < today && r.cost !== null).at(-1);
   const lines = [
     "⚡ DESCO status",
     `Account: ••••${state.profile.account.slice(-4)}`,
@@ -276,8 +332,8 @@ export function statusReport(state) {
   ];
   lines.push(
     row?.cost != null && row?.units != null
-      ? `Today so far: ${costLine(row)}`
-      : `Today's reading is pending.\n${latestLine(rows, today)}`,
+      ? `Today so far: ${usageLine(row)}`
+      : `Today's reading is pending.\n${latest ? `Latest day (${latest.date}): ${usageLine(latest)}` : "No complete daily reading yet."}`,
   );
   lines.push("Price/kWh is the day's average.");
   if (state.cache?.daily?.at)
@@ -291,28 +347,32 @@ export function statusReport(state) {
   return lines.join("\n");
 }
 export function periodReport(state, start, end) {
-  const rows = dailyDeltas(state.cache?.daily?.data),
-    byDate = new Map(rows.map((r) => [r.date, r]));
+  const rows = usageSeries(state, start, end);
   const lines = [`📊 Usage: ${start} → ${end}`];
-  let total = new Decimal(0),
+  let officialTotal = new Decimal(0),
+    estimatedTotal = new Decimal(0),
     count = 0,
-    days = 0;
-  for (let d = start; d <= end; d = shift(d, 1)) {
-    const r = byDate.get(d);
-    lines.push(`${d}: ${costLine(r)}`);
-    days++;
-    if (r?.cost != null && r?.units != null) {
-      total = total.plus(r.cost);
-      count++;
+    costDays = 0,
+    estimates = 0;
+  for (const row of rows) {
+    lines.push(`${row.date}: ${usageLine(row)}`);
+    if (row.estimated) {
+      estimatedTotal = estimatedTotal.plus(row.cost);
+      estimates++;
+    } else if (row.cost != null) {
+      officialTotal = officialTotal.plus(row.cost);
+      costDays++;
+      if (row.units != null) count++;
     }
   }
   lines.push(
-    `Days received: ${count}/${days}`,
-    `Cost for available days: ${count ? money(total) : "Pending"}`,
+    `DESCO-confirmed days: ${count}/${rows.length}`,
+    `Probable days: ${estimates}`,
+    `Cost shown: ${costDays || estimates ? money(officialTotal.plus(estimatedTotal)) : "Pending"}${estimates ? ` (includes ${money(estimatedTotal)} unofficial)` : ""}`,
   );
-  if (!count || !byDate.get(dhakaDate())?.cost)
-    lines.push(latestLine(rows, dhakaDate()));
-  lines.push("Price/kWh is the day's average. Today's total can change.");
+  lines.push(
+    "Price/kWh is the day's average. Probable deductions may include other charges.",
+  );
   if (state.failures?.includes("daily"))
     lines.push("⚠️ Using saved daily readings; refresh failed.");
   return lines.join("\n");
@@ -383,7 +443,7 @@ export function receiptReport(row, balance, recharges) {
   }
   return lines.join("\n");
 }
-export function historyReport(daily, receipts, start, end) {
+export function historyReport(daily, receipts, start, end, estimates = {}) {
   const byDate = new Map(dailyDeltas(daily).map((r) => [r.date, r])),
     groups = new Map();
   for (const r of receipts) {
@@ -418,16 +478,27 @@ export function historyReport(daily, receipts, start, end) {
     }
     lines.push("Days:");
     let total = new Decimal(0),
-      count = 0;
+      probable = new Decimal(0),
+      count = 0,
+      estimatedCount = 0;
     for (let d = begin; d <= finish; d = shift(d, 1)) {
-      const row = byDate.get(d);
-      lines.push(`${d}: ${costLine(row)}`);
-      if (row?.cost != null && row?.units != null) {
+      const row = byDate.get(d),
+        estimate =
+          d < dhakaDate() && row?.cost == null ? num(estimates[d]) : null;
+      lines.push(
+        `${d}: ${estimate === null ? usageLine(row) : usageLine({ cost: estimate, estimated: true })}`,
+      );
+      if (row?.cost != null) {
         total = total.plus(row.cost);
         count++;
+      } else if (estimate !== null) {
+        probable = probable.plus(estimate);
+        estimatedCount++;
       }
     }
-    lines.push(`Cost for available days: ${count ? money(total) : "Pending"}`);
+    lines.push(
+      `Cost for available days: ${count || estimatedCount ? money(total.plus(probable)) : "Pending"}${estimatedCount ? ` (includes ${money(probable)} unofficial)` : ""}`,
+    );
   }
   for (const r of receipts.filter((r) => r.orderStatus !== "Successful"))
     lines.push(

@@ -65,7 +65,8 @@ test("new balance gives an early daily estimate, later matching kWh is silent", 
   const state = stateWithNewMidnightBalance();
   const first = notifications(state);
   assert.equal(first.length, 1);
-  assert.match(first[0].text, /about ৳285\.17 spent/);
+  assert.match(first[0].text, /probable cost deduction ৳285\.17/);
+  assert.match(first[0].text, /unofficial/);
   assert.match(first[0].text, /Balance: ৳3670\.93/);
   assert.match(first[0].text, /Meter reading:/);
   state.cache.daily.data = dailyRows(285.17);

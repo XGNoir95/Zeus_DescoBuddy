@@ -2,6 +2,7 @@ const MAX_UPDATE_BYTES = 65536;
 const EXPENSIVE_COMMANDS = new Set([
   "connect",
   "usage_history",
+  "graph",
   "clear",
   "export",
 ]);

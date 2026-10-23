@@ -258,6 +258,15 @@ test(
             c.payload.text?.includes("Days:"),
         ),
       );
+      assert.equal((await send(43, "/graph week")).status, 200);
+      assert.equal(
+        calls.at(-1).method,
+        "sendPhoto",
+        JSON.stringify(calls.at(-1)),
+      );
+      assert.equal(calls.at(-1).payload.parse_mode, "HTML");
+      assert.equal(calls.at(-1).payload.photo.type, "image/png");
+      assert.match(calls.at(-1).payload.caption, /Week graph/);
       const remaining = await db
         .prepare("SELECT payload FROM users WHERE id=?")
         .bind("43")

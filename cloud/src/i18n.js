@@ -12,6 +12,45 @@ const bn = [
   ],
   ["⚡ DESCO status", "⚡ ডেসকো হিসাব"],
   ["📥 New DESCO reading", "📥 ডেসকোর নতুন রিডিং"],
+  ["📈 Week graph", "📈 সপ্তাহের গ্রাফ"],
+  ["📈 Month graph", "📈 মাসের গ্রাফ"],
+  ["probable cost deduction", "সম্ভাব্য খরচ কর্তন"],
+  ["Probable cost deduction", "সম্ভাব্য খরচ কর্তন"],
+  [
+    "unofficial, based on available balance readings",
+    "অনানুষ্ঠানিক; পাওয়া ব্যালেন্স রিডিং থেকে হিসাব",
+  ],
+  [
+    "DESCO daily cost and kWh are pending. This estimate may include other deductions.",
+    "ডেসকোর দিনের খরচ ও ইউনিট এখনো আসেনি। এই হিসাবে অন্য কর্তনও থাকতে পারে।",
+  ],
+  [
+    "unofficial, from balance readings",
+    "অনানুষ্ঠানিক; ব্যালেন্সের রিডিং থেকে হিসাব",
+  ],
+  ["DESCO kWh/cost pending.", "ডেসকোর ইউনিট ও খরচের তথ্য বাকি।"],
+  ["DESCO daily cost pending.", "ডেসকোর দিনের খরচের তথ্য বাকি।"],
+  ["DESCO cost", "ডেসকোর খরচ"],
+  ["kWh pending.", "ইউনিটের তথ্য বাকি।"],
+  ["DESCO-confirmed days:", "ডেসকো নিশ্চিত দিনের সংখ্যা:"],
+  ["Probable days:", "সম্ভাব্য হিসাবের দিন:"],
+  ["Cost shown:", "দেখানো মোট খরচ:"],
+  ["unofficial", "অনানুষ্ঠানিক"],
+  [
+    "Price/kWh is the day's average. Probable deductions may include other charges.",
+    "প্রতি ইউনিটের দাম ওই দিনের গড়। সম্ভাব্য কর্তনে অন্য চার্জ থাকতে পারে।",
+  ],
+  ["DESCO-complete days:", "ডেসকোর সম্পূর্ণ দিনের তথ্য:"],
+  ["Probable cost days:", "সম্ভাব্য খরচের দিন:"],
+  ["Pending cost days:", "খরচের তথ্য বাকি:"],
+  [
+    "Amber cost is an unofficial probable balance deduction. No kWh is guessed.",
+    "কমলা রঙের খরচ ব্যালেন্স থেকে করা অনানুষ্ঠানিক হিসাব। কোনো ইউনিট অনুমান করা হয়নি।",
+  ],
+  [
+    "Use /graph week or /graph month [YYYY-MM].",
+    "লিখুন /graph week অথবা /graph month [YYYY-MM]।",
+  ],
   ["⚠️ Cost difference for", "⚠️ খরচের অমিল, তারিখ"],
   ["about", "প্রায়"],
   ["spent from the balance change.", "ব্যালেন্সের পার্থক্য থেকে খরচ।"],
@@ -337,6 +376,7 @@ const helpBn = `⚡ জিউস ডেসকোবাডি
 /status — ব্যালেন্স ও সর্বশেষ খরচ
 /today — আজ বা সর্বশেষ দিনের খরচ
 /week · /month — সপ্তাহ ও মাসের হিসাব
+/graph week · /graph month [YYYY-MM] — সপ্তাহ ও মাসের গ্রাফ
 /recharges — সর্বশেষ রিচার্জ
 /history — রিচার্জের ইতিহাস
 /usage_history — এই মাসের খরচ
@@ -355,6 +395,8 @@ const helpBn = `⚡ জিউস ডেসকোবাডি
 /pause · /resume · /settings
 /clear — সাম্প্রতিক বার্তা মুছুন
 /disconnect — মিটারের তথ্য মুছুন
+
+সপ্তাহের গ্রাফে আজসহ শেষ ৭ দিন দেখায়। রবিবার–শনিবার সপ্তাহ ও পূর্ণ মাসের গ্রাফ ডেসকোর সব দিনের নিশ্চিত খরচ ও ইউনিট এলে নিজে থেকে পাঠানো হয়। কমলা খরচ ব্যালেন্স থেকে করা অনানুষ্ঠানিক অনুমান।
 
 সব সময় বাংলাদেশ সময়। ডেসকোর তথ্য আসতে দেরি হতে পারে।`;
 
@@ -384,6 +426,8 @@ const buttonsBn = new Map([
   ["⚡ Status", "⚡ অবস্থা"],
   ["📊 Today", "📊 আজ"],
   ["💳 Latest recharge", "💳 সর্বশেষ রিচার্জ"],
+  ["📈 Week graph", "📈 সপ্তাহের গ্রাফ"],
+  ["📈 Month graph", "📈 মাসের গ্রাফ"],
   ["📒 Usage history", "📒 ব্যবহারের ইতিহাস"],
   ["📜 Recharge history", "📜 রিচার্জের ইতিহাস"],
   ["🔎 Audit", "🔎 হিসাব যাচাই"],

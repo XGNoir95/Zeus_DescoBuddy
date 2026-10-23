@@ -51,6 +51,10 @@ test("rate guard spends the expensive budget only on costly commands", async () 
   const status = { message: { text: "/status" } };
   const history = { message: { text: "/usage_history 2026-10" } };
   assert.equal(isExpensive(history), true);
+  assert.equal(
+    isExpensive({ message: { text: "/graph month 2026-09" } }),
+    true,
+  );
   assert.equal(isExpensive(status), false);
   assert.equal(await allowUpdate(env, "42", status), true);
   assert.equal(await allowUpdate(env, "42", history), false);

@@ -13,13 +13,14 @@ in the parent folder remains a separate private/local edition.
 - Webhook-secret validation, bounded request bodies, per-user and onboarding
   rate limits, update deduplication, per-user leases, command spacing and a
   persistent notification outbox.
-- Status, today/week/month, last recharge, recharge history, grouped monthly
-  usage history, receipt/balance arithmetic, JSON export, alerts and schedules.
+- Status, today/week/month, daily cost/kWh graphs, last recharge, recharge
+  history, grouped monthly usage history, receipt/balance arithmetic, JSON
+  export, alerts and schedules.
 - Decimal cost calculations. Average price/kWh is not an independently verified
   tariff. Missing readings stay pending; cached readings are labelled.
-- Recharge/low-balance/optional receipt-mismatch notifications, later balance updates,
-  newly published reading notices, daily/weekly reports and follow-ups when
-  previously missing readings arrive.
+- Recharge/low-balance/optional receipt-mismatch notifications, later balance
+  updates, newly published reading notices, daily/weekly reports, completed
+  week/month graphs and follow-ups when previously missing readings arrive.
 - English and Bangla Telegram messages via `/language en` and `/language bn`,
   with bold headings and labels. New users receive alerts at ৳500, ৳300 and
   ৳200 as DESCO's reported balance crosses those amounts.
@@ -56,7 +57,9 @@ Useful commands:
 
 | Command                                                 | Result                                                             |
 | ------------------------------------------------------- | ------------------------------------------------------------------ |
-| `/status`, `/today`, `/week`, `/month`                  | Balance and dated usage costs                                      |
+| `/status`, `/today`, `/week`, `/month`                  | Balance and dated usage costs; `/week` includes today              |
+| `/graph week`                                           | Cost and kWh picture for the last 7 days including today           |
+| `/graph month [YYYY-MM]`                                | Picture for this month or an earlier calendar month                |
 | `/recharges`, `/history`                                | Latest recharge or recent recharge history                         |
 | `/usage_history [YYYY-MM]`                              | Recharges, deductions, and daily costs for a month                 |
 | `/audit`                                                | Receipt arithmetic and cautious balance comparison                 |
@@ -78,6 +81,18 @@ work while automatic messages are paused.
 Existing cloud accounts keep any custom balance threshold alongside the standard
 three. Earlier settings that disabled low-balance or recharge notices no longer
 disable the standard notices. `/extras off` clears only optional settings.
+
+When consecutive midnight balance readings permit it, an unofficial probable
+cost deduction appears immediately in the new-reading notice and in the text
+reports and on-demand graphs. It accounts for confirmed net recharge credits;
+it can still include other adjustments, so the bot never invents missing kWh
+or presents that amount as DESCO's official daily cost. Official daily records
+replace the estimate when available. On-demand graph captions label probable
+and pending days; orange marks represent probable costs. Each completed
+Sunday–Saturday week and calendar month receives one automatic graph, but only
+after DESCO has supplied official cost and kWh for every day in the period.
+Publishing delays can move this beyond the weekend or month end. `/extras off`
+does not stop these standard graphs; `/pause` does.
 
 ## Free capacity and current limits
 
