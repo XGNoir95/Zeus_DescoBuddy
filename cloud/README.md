@@ -187,6 +187,12 @@ local Miniflare Worker/D1. They do not contact real Telegram users. `/health`
 is public and contains no customer information. `/ready` requires the webhook
 secret. It checks connectivity, not meter accuracy or schedule delivery.
 
+Charts use antialiased glyphs generated from the SIL-licensed Roboto font at
+build time; the Worker does not load a system font or call an image service.
+To regenerate the committed glyph atlas after changing the chart typography,
+run `npm run font:build`. The font license is in
+[`assets/Roboto-OFL.txt`](assets/Roboto-OFL.txt).
+
 Use `wrangler d1 export zeus-descobuddy --remote --output PRIVATE_BACKUP.sql`
 for private database backups and retain DATA_KEY separately. Never commit
 backups. To roll back code, use Cloudflare deployment rollback or redeploy a

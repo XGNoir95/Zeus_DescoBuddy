@@ -143,5 +143,7 @@ test("graph renderer produces a valid bounded PNG", () => {
     }
     offset += 12 + length;
   }
-  assert.equal(inflateSync(idat).length, 900 * 761);
+  const raw = inflateSync(idat);
+  assert.equal(raw.length, 900 * 761);
+  assert.ok(new Set(raw).size > 20, "real-font edges should be antialiased");
 });
